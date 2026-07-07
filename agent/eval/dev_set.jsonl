@@ -1,0 +1,40 @@
+{"task_id": "factual-1", "category": "factual", "prompt": "What is the capital of France?", "expected": "Paris"}
+{"task_id": "factual-2", "category": "factual", "prompt": "Who wrote the novel '1984'?", "expected": "George Orwell"}
+{"task_id": "factual-3", "category": "factual", "prompt": "What is the chemical symbol for gold?", "expected": "Au"}
+{"task_id": "factual-4", "category": "factual", "prompt": "In which year did the Apollo 11 moon landing happen?", "expected": "1969"}
+{"task_id": "factual-5", "category": "factual", "prompt": "What is the largest planet in the Solar System?", "expected": "Jupiter"}
+{"task_id": "math-1", "category": "math", "prompt": "Calculate 847 * 32 - 15", "expected": "27089"}
+{"task_id": "math-2", "category": "math", "prompt": "What is 15% of 240?", "expected": "36"}
+{"task_id": "math-3", "category": "math", "prompt": "A train travels at 60 km/h for 2.5 hours. How many kilometers does it cover?", "expected": "150"}
+{"task_id": "math-4", "category": "math", "prompt": "What is the remainder when 1234 is divided by 9?", "expected": "1"}
+{"task_id": "math-5", "category": "math", "prompt": "Compute the sum of the first 100 positive integers.", "expected": "5050"}
+{"task_id": "sentiment-1", "category": "sentiment", "prompt": "Classify the sentiment of this review as positive, negative or neutral: 'The food was cold and the waiter was rude.'", "expected": "negative"}
+{"task_id": "sentiment-2", "category": "sentiment", "prompt": "Classify the sentiment of this review as positive, negative or neutral: 'Best concert of my life!!'", "expected": "positive"}
+{"task_id": "sentiment-3", "category": "sentiment", "prompt": "Classify the sentiment of this review as positive, negative or neutral: 'It was okay, nothing special.'", "expected": "neutral"}
+{"task_id": "sentiment-4", "category": "sentiment", "prompt": "Classify the sentiment of this review as positive, negative or neutral: 'Absolutely loved the new update, works flawlessly.'", "expected": "positive"}
+{"task_id": "sentiment-5", "category": "sentiment", "prompt": "Classify the sentiment of this review as positive, negative or neutral: 'Terrible battery life, returning it tomorrow.'", "expected": "negative"}
+{"task_id": "summarization-1", "category": "summarization", "prompt": "Summarize in one sentence: The Eiffel Tower was completed in 1889 as the entrance arch to the World's Fair in Paris. Initially criticized by artists, it became the most recognizable landmark of France and one of the most visited monuments in the world.", "expected": "Eiffel Tower"}
+{"task_id": "summarization-2", "category": "summarization", "prompt": "Summarize in one sentence: Honeybee populations have declined sharply over the past two decades due to pesticides, habitat loss and disease, threatening the pollination of crops that supply a third of the food humans eat.", "expected": "bee"}
+{"task_id": "summarization-3", "category": "summarization", "prompt": "Summarize in one sentence: The company reported quarterly profits that rose 40 percent year over year, driven by strong cloud subscription growth, and raised its guidance for the rest of the fiscal year.", "expected": "profit"}
+{"task_id": "summarization-4", "category": "summarization", "prompt": "Summarize in one sentence: Deforestation in the Amazon rainforest accelerated again this year, with thousands of square kilometers cleared for cattle ranching and soy farming despite government pledges to stop it.", "expected": "Amazon"}
+{"task_id": "summarization-5", "category": "summarization", "prompt": "Summarize in one sentence: Researchers announced that a new malaria vaccine showed 77 percent efficacy in early trials involving 450 children, raising hopes of finally controlling a disease that kills hundreds of thousands each year.", "expected": "vaccine"}
+{"task_id": "ner-1", "category": "ner", "prompt": "Extract the person and organization names from: 'Tim Cook announced Apple's new campus in Austin.' Output JSON.", "expected": "[\"Tim Cook\", \"Apple\"]"}
+{"task_id": "ner-2", "category": "ner", "prompt": "Extract the people, dates and locations from: 'Marie Curie won the Nobel Prize in 1903 in Paris.' Output JSON.", "expected": "[\"Marie Curie\", \"1903\", \"Paris\"]"}
+{"task_id": "ner-3", "category": "ner", "prompt": "Extract the people, organizations and locations from: 'Satya Nadella leads Microsoft from Redmond.' Output JSON.", "expected": "[\"Satya Nadella\", \"Microsoft\", \"Redmond\"]"}
+{"task_id": "ner-4", "category": "ner", "prompt": "Extract the people, locations and dates from: 'Barack Obama was born in Honolulu in 1961.' Output JSON.", "expected": "[\"Barack Obama\", \"Honolulu\", \"1961\"]"}
+{"task_id": "ner-5", "category": "ner", "prompt": "Extract the organizations, locations and dates from: 'Tesla opened a factory in Berlin in 2022.' Output JSON.", "expected": "[\"Tesla\", \"Berlin\", \"2022\"]"}
+{"task_id": "code_debug-1", "category": "code_debug", "prompt": "Fix the bug in this function:\n```python\ndef add(a, b):\n    return a - b\n```", "expected": "a + b"}
+{"task_id": "code_debug-2", "category": "code_debug", "prompt": "Fix the bug in this function:\n```python\ndef is_even(n):\n    return n % 2 == 1\n```", "expected": "% 2 == 0"}
+{"task_id": "code_debug-3", "category": "code_debug", "prompt": "This loop never ends, fix it:\n```python\nx = 10\nwhile x > 0:\n    print(x)\n```", "expected": "x -= 1"}
+{"task_id": "code_debug-4", "category": "code_debug", "prompt": "Fix the syntax error:\n```python\nif x = 5:\n    print('five')\n```", "expected": "x == 5"}
+{"task_id": "code_debug-5", "category": "code_debug", "prompt": "Fix the syntax error:\n```python\nprint('Hello world'\n```", "expected": "print('Hello world')"}
+{"task_id": "logic-1", "category": "logic", "prompt": "If Anna is taller than Ben, and Ben is taller than Carl, who is the shortest?", "expected": "Carl"}
+{"task_id": "logic-2", "category": "logic", "prompt": "All cats are mammals. Tom is a cat. Is Tom a mammal? Answer yes or no.", "expected": "yes"}
+{"task_id": "logic-3", "category": "logic", "prompt": "Either it is raining or it is sunny. It is not raining. What is the weather?", "expected": "sunny"}
+{"task_id": "logic-4", "category": "logic", "prompt": "True or false: All squares are rectangles.", "expected": "true"}
+{"task_id": "logic-5", "category": "logic", "prompt": "John is older than Mary. Mary is older than Sue. Is Sue younger than John? Answer yes or no.", "expected": "yes"}
+{"task_id": "code_gen-1", "category": "code_gen", "prompt": "Write a Python function named is_palindrome that returns True if a string is a palindrome.", "expected": "def is_palindrome"}
+{"task_id": "code_gen-2", "category": "code_gen", "prompt": "Write a Python function named fib that returns the nth Fibonacci number.", "expected": "def fib"}
+{"task_id": "code_gen-3", "category": "code_gen", "prompt": "Write a SQL query selecting all columns from a table named customers.", "expected": "select * from customers"}
+{"task_id": "code_gen-4", "category": "code_gen", "prompt": "Write a Python function named celsius_to_fahrenheit that converts Celsius to Fahrenheit.", "expected": "def celsius_to_fahrenheit"}
+{"task_id": "code_gen-5", "category": "code_gen", "prompt": "Write a Python function named reverse_string that returns the reversed input string.", "expected": "def reverse_string"}

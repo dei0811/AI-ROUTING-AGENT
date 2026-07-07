@@ -226,3 +226,8 @@ data/processed/features_dataset.parquet
 
 # Virtual environment
 venv/
+
+# Claude Code project instructions
+CLAUDE.md
+CLAUDE_AGENT_SPEC.md
+

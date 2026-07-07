@@ -1,0 +1,29 @@
+{
+  "concurrency": 8,
+  "global_budget_s": 540,
+  "task_budget_s": 16,
+  "code_exec_categories": ["math"],
+  "code_exec_timeout_s": 6,
+  "category_tiers": {
+    "factual": "small",
+    "math": "mid",
+    "sentiment": "small",
+    "summarization": "small",
+    "ner": "small",
+    "code_debug": "large",
+    "logic": "large",
+    "code_gen": "large",
+    "unknown": "mid"
+  },
+  "category_max_tokens": {
+    "factual": 64,
+    "math": 160,
+    "sentiment": 8,
+    "summarization": 256,
+    "ner": 256,
+    "code_debug": 512,
+    "logic": 128,
+    "code_gen": 512,
+    "unknown": 256
+  }
+}

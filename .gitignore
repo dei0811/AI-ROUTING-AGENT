@@ -220,3 +220,9 @@ data/processed/dataset.json
 data/raw/alpaca_data_cleaned.json
 data/raw/ultrachat_data.json
 data/processed/features_dataset.parquet
+
+# Claude Code
+.claude/
+
+# Virtual environment
+venv/

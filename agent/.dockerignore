@@ -4,3 +4,4 @@ __pycache__/
 *.pyc
 .dockerignore
 Dockerfile
+models/README.md

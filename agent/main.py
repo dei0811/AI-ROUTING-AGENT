@@ -1,11 +1,10 @@
-"""Entrypoint for the token-efficient general-purpose agent.
+"""Entrypoint for the hybrid local-first token-efficient agent.
 
-Reads /input/tasks.json, solves every task through Fireworks AI, and
-writes /output/results.json. Exit code 0 on success, non-zero on any
-fatal error. Startup must stay light (<60 s budget): no heavy imports
-or setup before reading the input.
-
-Phase 2: single general prompt per task through the (mockable) client.
+Reads /input/tasks.json, solves every task — local model (0 tokens)
+where it clears the gate, Fireworks otherwise — and writes
+/output/results.json. Exit code 0 on success, non-zero on any fatal
+error. Startup must stay under 60 s: the GGUF loads via mmap (seconds)
+and nothing heavy runs before the input is read.
 """
 
 import logging
@@ -17,6 +16,7 @@ _START = time.monotonic()  # startup counts against the global budget
 
 from fireworks_client import make_client
 from io_utils import load_config, load_tasks, write_results
+from local_model import make_local_model
 from solve import solve_all
 
 logging.basicConfig(
@@ -77,9 +77,14 @@ def main() -> int:
 
         tasks = load_tasks(input_path)
         client = make_client(config)
-        results = solve_all(tasks, client, config, start_time=_START)
+        local_model = make_local_model(config)
+        results = solve_all(
+            tasks, client, config, local_model=local_model, start_time=_START,
+        )
         write_results(output_path, results, expected_ids=[t["task_id"] for t in tasks])
-        logger.info("Token usage: %s", client.tokens.summary())
+        logger.info("Fireworks token usage: %s", client.tokens.summary())
+        if local_model is not None:
+            logger.info("Local model usage (free): %s", local_model.stats.summary())
     except Exception:
         logger.exception("Fatal error; no valid results written")
         return 1

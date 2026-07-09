@@ -5,8 +5,8 @@
   "local_task_budget_s": 25,
   "local_task_est_s": 20,
   "flip_reserve_s": 60,
-  "local_ctx": 2048,
-  "local_max_tokens_cap": 160,
+  "local_ctx": 1536,
+  "local_max_tokens_cap": 64,
   "escalate_malformed_local": true,
   "code_exec_categories": [
     "math"
@@ -48,5 +48,6 @@
     "code_gen": 512,
     "unknown": 256
   },
-  "local_model_path": "models/qwen2.5-0.5b-instruct-q4_k_m.gguf"
+  "local_model_path": "models/phi-4-mini.gguf",
+  "local_kv_type": "q8_0"
 }

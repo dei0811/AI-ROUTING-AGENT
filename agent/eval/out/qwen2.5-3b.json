@@ -1,0 +1,27 @@
+{
+  "model": "qwen2.5-3b",
+  "file_size_gb": 2.1,
+  "ctx": 1536,
+  "kv": "q8_0",
+  "load_s": 3.0,
+  "prefill_tok_s": 12.3,
+  "decode_tok_s": 6.6,
+  "est_tokens_30s": 135,
+  "pass_by_category": {
+    "factual": 1.0,
+    "logic": 1.0,
+    "math": 0.8,
+    "ner": 1.0,
+    "sentiment": 1.0,
+    "summarization": 0.8
+  },
+  "overall_pass": 0.93,
+  "cgroup_peak_gb": 1.54,
+  "local_stats": {
+    "calls": 33,
+    "output_tokens": 358,
+    "generation_s": 128.4,
+    "tok_per_s": 2.8
+  },
+  "completed_batch": true
+}

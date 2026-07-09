@@ -1,95 +1,13 @@
 [
   {
-    "model_path": "C:\\Users\\Deiner\\Desktop\\AMD\\ai-router\\agent\\models\\bench\\qwen3.5-4b\\Qwen3.5-4B-Q4_K_M.gguf",
-    "file_size_gb": 2.74,
-    "load_s": 6.2,
-    "prefill_tok_s": 12.3,
-    "decode_tok_s": 4.7,
-    "est_tokens_30s": 96,
-    "pass_by_category": {
-      "factual": 1.0,
-      "logic": 1.0,
-      "math": 1.0,
-      "ner": 1.0,
-      "sentiment": 1.0,
-      "summarization": 0.8
-    },
-    "overall_pass": 0.97,
-    "peak_rss_gb": 3.59,
-    "local_stats": {
-      "calls": 32,
-      "output_tokens": 357,
-      "generation_s": 249.6,
-      "tok_per_s": 1.4
-    },
-    "model": "Qwen3.5-4B",
-    "fits_4gb": false,
-    "verdict": "DISCARD",
-    "reason": "peak RSS 3.59 GB > 3.4 GB"
-  },
-  {
-    "model_path": "C:\\Users\\Deiner\\Desktop\\AMD\\ai-router\\agent\\models\\bench\\smollm3-3b\\SmolLM3-3B-Q4_K_M.gguf",
-    "file_size_gb": 1.92,
-    "load_s": 4.6,
-    "prefill_tok_s": 8.0,
-    "decode_tok_s": 7.0,
-    "est_tokens_30s": 111,
-    "pass_by_category": {
-      "factual": 1.0,
-      "logic": 1.0,
-      "math": 1.0,
-      "ner": 1.0,
-      "sentiment": 1.0,
-      "summarization": 0.8
-    },
-    "overall_pass": 0.97,
-    "peak_rss_gb": 3.63,
-    "local_stats": {
-      "calls": 31,
-      "output_tokens": 479,
-      "generation_s": 110.7,
-      "tok_per_s": 4.3
-    },
     "model": "SmolLM3-3B",
-    "fits_4gb": false,
-    "verdict": "DISCARD",
-    "reason": "peak RSS 3.63 GB > 3.4 GB"
-  },
-  {
-    "model_path": "C:\\Users\\Deiner\\Desktop\\AMD\\ai-router\\agent\\models\\bench\\gemma-3-4b-it-qat\\gemma-3-4b-it-qat-Q4_K_M.gguf",
-    "file_size_gb": 2.49,
-    "load_s": 5.4,
-    "prefill_tok_s": 18.1,
-    "decode_tok_s": 5.8,
-    "est_tokens_30s": 135,
-    "pass_by_category": {
-      "factual": 1.0,
-      "logic": 1.0,
-      "math": 0.6,
-      "ner": 1.0,
-      "sentiment": 1.0,
-      "summarization": 0.8
-    },
-    "overall_pass": 0.9,
-    "peak_rss_gb": 4.45,
-    "local_stats": {
-      "calls": 33,
-      "output_tokens": 561,
-      "generation_s": 850.8,
-      "tok_per_s": 0.7
-    },
-    "model": "Gemma-3-4B-it-QAT",
-    "fits_4gb": false,
-    "verdict": "DISCARD",
-    "reason": "peak RSS 4.45 GB > 3.4 GB; overall 0.90 not above baseline 0.90; regresses math vs baseline"
-  },
-  {
-    "model_path": "C:\\Users\\Deiner\\Desktop\\AMD\\ai-router\\agent\\models\\bench\\phi-4-mini\\Phi-4-mini-instruct-Q4_K_M.gguf",
-    "file_size_gb": 2.49,
-    "load_s": 6.9,
-    "prefill_tok_s": 14.3,
-    "decode_tok_s": 4.6,
-    "est_tokens_30s": 100,
+    "file_size_gb": 1.92,
+    "ctx": 1536,
+    "kv": "q8_0",
+    "load_s": 12.5,
+    "prefill_tok_s": 4.8,
+    "decode_tok_s": 6.8,
+    "est_tokens_30s": 49,
     "pass_by_category": {
       "factual": 1.0,
       "logic": 1.0,
@@ -99,25 +17,27 @@
       "summarization": 0.8
     },
     "overall_pass": 0.97,
-    "peak_rss_gb": 3.83,
+    "cgroup_peak_gb": 1.62,
     "local_stats": {
       "calls": 31,
-      "output_tokens": 419,
-      "generation_s": 147.1,
-      "tok_per_s": 2.8
+      "output_tokens": 521,
+      "generation_s": 151.4,
+      "tok_per_s": 3.4
     },
-    "model": "Phi-4-mini-instruct",
-    "fits_4gb": false,
+    "completed_batch": true,
+    "oom_under_4g": false,
     "verdict": "DISCARD",
-    "reason": "peak RSS 3.83 GB > 3.4 GB"
+    "reason": "only ~49 tokens fit in 30s (< 64)"
   },
   {
-    "model_path": "C:\\Users\\Deiner\\Desktop\\AMD\\ai-router\\agent\\models\\bench\\llama-3.2-3b\\Llama-3.2-3B-Instruct-Q4_K_M.gguf",
+    "model": "Llama-3.2-3B-Instruct",
     "file_size_gb": 2.02,
-    "load_s": 6.0,
-    "prefill_tok_s": 21.3,
-    "decode_tok_s": 6.0,
-    "est_tokens_30s": 144,
+    "ctx": 1536,
+    "kv": "q8_0",
+    "load_s": 5.0,
+    "prefill_tok_s": 13.8,
+    "decode_tok_s": 6.6,
+    "est_tokens_30s": 140,
     "pass_by_category": {
       "factual": 1.0,
       "logic": 0.8,
@@ -127,49 +47,171 @@
       "summarization": 0.8
     },
     "overall_pass": 0.93,
-    "peak_rss_gb": 3.75,
+    "cgroup_peak_gb": 1.64,
     "local_stats": {
       "calls": 31,
-      "output_tokens": 527,
-      "generation_s": 187.5,
-      "tok_per_s": 2.8
+      "output_tokens": 498,
+      "generation_s": 139.0,
+      "tok_per_s": 3.6
     },
-    "model": "Llama-3.2-3B-Instruct",
-    "fits_4gb": false,
-    "verdict": "DISCARD",
-    "reason": "peak RSS 3.75 GB > 3.4 GB"
+    "completed_batch": true,
+    "oom_under_4g": false,
+    "verdict": "KEEP",
+    "reason": ""
   },
   {
-    "model_path": "C:\\Users\\Deiner\\Desktop\\AMD\\ai-router\\agent\\models\\qwen2.5-0.5b-instruct-q4_k_m.gguf",
-    "file_size_gb": 0.49,
-    "load_s": 2.7,
-    "prefill_tok_s": 69.2,
-    "decode_tok_s": 20.6,
-    "est_tokens_30s": 566,
+    "model": "Qwen3.5-4B",
+    "file_size_gb": 2.74,
+    "ctx": 1536,
+    "kv": "q8_0",
+    "load_s": 11.1,
+    "prefill_tok_s": 6.7,
+    "decode_tok_s": 4.2,
+    "est_tokens_30s": 56,
+    "pass_by_category": {
+      "factual": 1.0,
+      "logic": 1.0,
+      "math": 1.0,
+      "ner": 1.0,
+      "sentiment": 1.0,
+      "summarization": 0.8
+    },
+    "overall_pass": 0.97,
+    "cgroup_peak_gb": 1.71,
+    "local_stats": {
+      "calls": 32,
+      "output_tokens": 373,
+      "generation_s": 316.5,
+      "tok_per_s": 1.2
+    },
+    "completed_batch": true,
+    "oom_under_4g": false,
+    "verdict": "DISCARD",
+    "reason": "only ~56 tokens fit in 30s (< 64)"
+  },
+  {
+    "model": "Phi-4-mini-instruct",
+    "file_size_gb": 2.49,
+    "ctx": 1536,
+    "kv": "q8_0",
+    "load_s": 4.0,
+    "prefill_tok_s": 9.7,
+    "decode_tok_s": 5.1,
+    "est_tokens_30s": 93,
+    "pass_by_category": {
+      "factual": 1.0,
+      "logic": 1.0,
+      "math": 1.0,
+      "ner": 1.0,
+      "sentiment": 1.0,
+      "summarization": 0.8
+    },
+    "overall_pass": 0.97,
+    "cgroup_peak_gb": 1.63,
+    "local_stats": {
+      "calls": 31,
+      "output_tokens": 423,
+      "generation_s": 166.0,
+      "tok_per_s": 2.5
+    },
+    "completed_batch": true,
+    "oom_under_4g": false,
+    "verdict": "KEEP",
+    "reason": ""
+  },
+  {
+    "model": "Qwen2.5-1.5B-Instruct",
+    "file_size_gb": 1.12,
+    "ctx": 1536,
+    "kv": "q8_0",
+    "load_s": 5.8,
+    "prefill_tok_s": 28.2,
+    "decode_tok_s": 11.9,
+    "est_tokens_30s": 300,
     "pass_by_category": {
       "factual": 1.0,
       "logic": 0.8,
+      "math": 1.0,
+      "ner": 0.4,
+      "sentiment": 1.0,
+      "summarization": 0.8
+    },
+    "overall_pass": 0.83,
+    "cgroup_peak_gb": 0.82,
+    "local_stats": {
+      "calls": 31,
+      "output_tokens": 476,
+      "generation_s": 70.0,
+      "tok_per_s": 6.8
+    },
+    "completed_batch": true,
+    "oom_under_4g": false,
+    "verdict": "DISCARD",
+    "reason": "regresses ner vs baseline"
+  },
+  {
+    "model": "Qwen2.5-3B-Instruct",
+    "file_size_gb": 2.1,
+    "ctx": 1536,
+    "kv": "q8_0",
+    "load_s": 3.0,
+    "prefill_tok_s": 12.3,
+    "decode_tok_s": 6.6,
+    "est_tokens_30s": 135,
+    "pass_by_category": {
+      "factual": 1.0,
+      "logic": 1.0,
       "math": 0.8,
       "ner": 1.0,
       "sentiment": 1.0,
       "summarization": 0.8
     },
-    "overall_pass": 0.9,
-    "peak_rss_gb": 0.63,
+    "overall_pass": 0.93,
+    "cgroup_peak_gb": 1.54,
     "local_stats": {
-      "calls": 34,
-      "output_tokens": 697,
-      "generation_s": 40.0,
-      "tok_per_s": 17.4
+      "calls": 33,
+      "output_tokens": 358,
+      "generation_s": 128.4,
+      "tok_per_s": 2.8
     },
+    "completed_batch": true,
+    "oom_under_4g": false,
+    "verdict": "KEEP",
+    "reason": ""
+  },
+  {
     "model": "Qwen2.5-0.5B",
-    "fits_4gb": true,
+    "file_size_gb": 0.49,
+    "ctx": 1536,
+    "kv": "q8_0",
+    "load_s": 0.9,
+    "prefill_tok_s": 75.7,
+    "decode_tok_s": 29.1,
+    "est_tokens_30s": 803,
+    "pass_by_category": {
+      "factual": 1.0,
+      "logic": 0.6,
+      "math": 0.6,
+      "ner": 1.0,
+      "sentiment": 1.0,
+      "summarization": 0.8
+    },
+    "overall_pass": 0.83,
+    "cgroup_peak_gb": 0.23,
+    "local_stats": {
+      "calls": 36,
+      "output_tokens": 643,
+      "generation_s": 38.6,
+      "tok_per_s": 16.7
+    },
+    "completed_batch": true,
+    "oom_under_4g": false,
     "verdict": "BASELINE",
     "reason": ""
   },
   {
-    "model": "Qwen3.5-2B-Instruct",
+    "model": "Gemma-3-4B-it-QAT",
     "verdict": "SKIPPED",
-    "reason": "No such model on Hugging Face (Qwen3.5 family starts at 4B); benchmarked Qwen3.5-4B as the nearest Qwen candidate instead."
+    "reason": "excluded this round (spec §2): worst v1 RAM overflow and math regressed to 0.60"
   }
 ]

@@ -95,11 +95,17 @@ class LocalModel:
             # flash_attn is required for a quantized V cache.
             kwargs.update(type_k=ggml_type, type_v=ggml_type, flash_attn=True)
 
+        # n_threads_batch must match n_threads: its default is
+        # cpu_count(), which under a container CPU quota (grading box:
+        # 2 vCPU) spawns more prefill threads than the quota can run —
+        # CFS throttling then stalls prompt processing to decode speed.
+        threads = n_threads or os.cpu_count()
         started = time.monotonic()
         self._llama = Llama(
             model_path=str(model_path),
             n_ctx=n_ctx,
-            n_threads=n_threads or os.cpu_count(),
+            n_threads=threads,
+            n_threads_batch=threads,
             verbose=False,
             **kwargs,
         )

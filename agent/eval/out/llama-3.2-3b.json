@@ -1,0 +1,27 @@
+{
+  "model": "llama-3.2-3b",
+  "file_size_gb": 2.02,
+  "ctx": 1536,
+  "kv": "q8_0",
+  "load_s": 5.0,
+  "prefill_tok_s": 13.8,
+  "decode_tok_s": 6.6,
+  "est_tokens_30s": 140,
+  "pass_by_category": {
+    "factual": 1.0,
+    "logic": 0.8,
+    "math": 1.0,
+    "ner": 1.0,
+    "sentiment": 1.0,
+    "summarization": 0.8
+  },
+  "overall_pass": 0.93,
+  "cgroup_peak_gb": 1.64,
+  "local_stats": {
+    "calls": 31,
+    "output_tokens": 498,
+    "generation_s": 139.0,
+    "tok_per_s": 3.6
+  },
+  "completed_batch": true
+}

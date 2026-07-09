@@ -1,0 +1,27 @@
+{
+  "model": "smollm3-3b",
+  "file_size_gb": 1.92,
+  "ctx": 1536,
+  "kv": "q8_0",
+  "load_s": 12.5,
+  "prefill_tok_s": 4.8,
+  "decode_tok_s": 6.8,
+  "est_tokens_30s": 49,
+  "pass_by_category": {
+    "factual": 1.0,
+    "logic": 1.0,
+    "math": 1.0,
+    "ner": 1.0,
+    "sentiment": 1.0,
+    "summarization": 0.8
+  },
+  "overall_pass": 0.97,
+  "cgroup_peak_gb": 1.62,
+  "local_stats": {
+    "calls": 31,
+    "output_tokens": 521,
+    "generation_s": 151.4,
+    "tok_per_s": 3.4
+  },
+  "completed_batch": true
+}

@@ -33,6 +33,12 @@ DEFAULT_CTX = 2048
 # below this still apply (min of the two wins).
 DEFAULT_MAX_TOKENS_CAP = 160
 
+# KV-cache quantization: shrinks the biggest non-weight RAM consumer so
+# larger models fit the 4 GB box. Values are llama.cpp GGML type names;
+# quantized V requires flash attention (CPU-supported in llama.cpp).
+DEFAULT_KV_TYPE = "f16"
+_KV_TYPE_NAMES = ("f16", "q8_0", "q4_0")
+
 _DEFAULT_MODELS_DIR = Path(__file__).resolve().parent / "models"
 
 
@@ -76,8 +82,18 @@ class LocalModel:
 
     def __init__(self, model_path: str, n_ctx: int = DEFAULT_CTX,
                  n_threads: int = None,
-                 max_tokens_cap: int = DEFAULT_MAX_TOKENS_CAP):
+                 max_tokens_cap: int = DEFAULT_MAX_TOKENS_CAP,
+                 kv_type: str = DEFAULT_KV_TYPE):
+        import llama_cpp
         from llama_cpp import Llama  # lazy: mock mode must not need it
+
+        kwargs = {}
+        if kv_type != "f16":
+            if kv_type not in _KV_TYPE_NAMES:
+                raise ValueError(f"kv_type must be one of {_KV_TYPE_NAMES}")
+            ggml_type = getattr(llama_cpp, f"GGML_TYPE_{kv_type.upper()}")
+            # flash_attn is required for a quantized V cache.
+            kwargs.update(type_k=ggml_type, type_v=ggml_type, flash_attn=True)
 
         started = time.monotonic()
         self._llama = Llama(
@@ -85,13 +101,14 @@ class LocalModel:
             n_ctx=n_ctx,
             n_threads=n_threads or os.cpu_count(),
             verbose=False,
+            **kwargs,
         )
         self._lock = threading.Lock()
         self.max_tokens_cap = max_tokens_cap
         self.stats = LocalStats()
         logger.info(
-            "Local model loaded in %.1fs: %s (n_ctx=%d)",
-            time.monotonic() - started, model_path, n_ctx,
+            "Local model loaded in %.1fs: %s (n_ctx=%d, kv=%s)",
+            time.monotonic() - started, model_path, n_ctx, kv_type,
         )
 
     def generate(self, messages: list, max_tokens: int,
@@ -206,6 +223,7 @@ def make_local_model(config: dict):
             max_tokens_cap=int(
                 config.get("local_max_tokens_cap", DEFAULT_MAX_TOKENS_CAP)
             ),
+            kv_type=config.get("local_kv_type", DEFAULT_KV_TYPE),
         )
     except Exception:
         logger.exception(

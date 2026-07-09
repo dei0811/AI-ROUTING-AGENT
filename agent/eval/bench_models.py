@@ -1,282 +1,203 @@
-"""Benchmark candidate local GGUF models under grading-box limits.
+"""Local model benchmark v2 — container-based (host orchestrator).
 
-Per BENCHMARK_LOCAL_MODELS.md: for each candidate in models/bench/,
-measure — in a subprocess, so peak RSS is per-model and a crash cannot
-kill the run — load time, peak RSS, prefill/decode speed at n_threads=2
-(2-vCPU emulation), and judge pass-rate on the dev set, then apply the
-hard gates and pick a winner.
+v1 measured peak RSS on the Windows host, which over-counts mmap'd
+weights and does not map to the grading box's 4 GB cgroup — it wrongly
+discarded every strong model. v2 runs each candidate INSIDE a real
+``linux/amd64`` container capped exactly like the submission
+(``--memory=4g --memory-swap=4g --cpus=2``): the RAM verdict is the
+kernel's own OOM pass/fail, read back via ``State.OOMKilled``.
 
-Quality runs the six locally-served categories (factual, math,
-sentiment, summarization, ner, logic) through the real solve pipeline
-(route forced LOCAL, escalation off) with the offline heuristic judge,
-so the bench needs no Fireworks key. Code categories are routed to
-Fireworks in production and are not part of local model selection.
+Per candidate in models/bench/<name>/model.gguf:
+1. docker run the bench image with the weights mounted read-only;
+   eval/bench_one.py measures load, speed and dev-set quality inside.
+2. OOM under the default footprint (ctx=1536, KV q8_0) -> one retry
+   with ctx=1024, KV q4_0. Still OOM -> DISCARD.
+3. Apply the hard gates, write eval/benchmark_results.json +
+   eval/BENCHMARK_REPORT.md (always BEFORE deletion), pick the winner,
+   then install it into models/ + config.json and delete the losers.
 
 Usage (from agent/):
     python eval/bench_models.py               # bench all + report + cleanup
     AUTO_DELETE=0 python eval/bench_models.py # stop after printing the plan
-    KEEP_FALLBACK=1 ...                       # also keep the smallest RAM-fitting model
-    python eval/bench_models.py --measure path/to/model.gguf [--no-think]  # child mode
+    KEEP_FALLBACK=1 ...                       # also keep the fast floor model
 
-Outputs (written BEFORE any deletion):
-    eval/benchmark_results.json
-    eval/BENCHMARK_REPORT.md
+Requires Docker (Desktop) with linux containers. The bench image is
+built automatically from eval/Dockerfile.bench when missing.
 """
 
-import argparse
-import ctypes
 import glob
 import json
-import logging
 import os
-import re
 import shutil
 import subprocess
 import sys
-import time
 from pathlib import Path
 
-os.environ.setdefault("OMP_NUM_THREADS", "2")  # before llama_cpp loads
-
 AGENT_DIR = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(AGENT_DIR))
-sys.path.insert(0, str(AGENT_DIR / "eval"))
-
-logging.basicConfig(level=logging.WARNING, format="%(levelname)s %(message)s")
-logger = logging.getLogger("bench")
-
+OUT_DIR = AGENT_DIR / "eval" / "out"
 BENCH_DIR = AGENT_DIR / "models" / "bench"
 SHIPPED_DIR = AGENT_DIR / "models"
 RESULTS_JSON = AGENT_DIR / "eval" / "benchmark_results.json"
 REPORT_MD = AGENT_DIR / "eval" / "BENCHMARK_REPORT.md"
 
-# 2-vCPU grading-box emulation (spec §3.1).
-BENCH_THREADS = 2
-BENCH_CTX = 2048
-# Hard per-generation ceiling inside a task; generation streams and
-# truncates at the deadline, so a slow model cannot hang the bench.
-BENCH_TASK_BUDGET_S = 30.0
-CHILD_TIMEOUT_S = 2700  # whole-candidate ceiling (load + probe + 30 tasks)
+IMAGE = "track1-bench"
+# The submission shape (spec §1). memory-swap == memory -> no swap escape.
+DOCKER_LIMITS = ("--memory=4g", "--memory-swap=4g", "--cpus=2",
+                 "--platform", "linux/amd64")
+DEFAULT_FOOTPRINT = {"CTX": "1536", "KV": "q8_0"}
+RETRY_FOOTPRINT = {"CTX": "1024", "KV": "q4_0"}
+CONTAINER_TIMEOUT_S = 3600
 
-# Hard gates (spec §1).
-MAX_PEAK_RSS_GB = 3.4      # 4 GB minus ~0.5 GB agent headroom
+# Hard gates (spec §1). RAM is the container's OOM verdict, not a threshold.
 MAX_LOAD_S = 60.0
-# "Category-appropriate answer < 30 s": floor of usable answer tokens
-# within the per-request limit (sentiment label, short fact, compact
-# NER JSON, one-sentence summary all fit in 64).
 MIN_TOKENS_30S = 64
-
-LOCAL_CATEGORIES = ("factual", "math", "sentiment", "summarization", "ner", "logic")
 OBJECTIVE_CATEGORIES = ("math", "ner", "sentiment")
+# Quality floor if the baseline container run itself fails: v1 numbers.
+FALLBACK_BASELINE = {"overall_pass": 0.90,
+                     "pass_by_category": {"math": 0.8, "ner": 1.0, "sentiment": 1.0}}
 
-SPEED_PROBE_PROMPT = (
-    "The Amazon rainforest spans nine countries and holds roughly ten percent "
-    "of the planet's known species. Its trees cycle enormous volumes of water "
-    "into the atmosphere, seeding rainfall far beyond the basin itself, while "
-    "its soils and biomass store carbon accumulated over centuries. Clearing "
-    "for cattle ranching, soy farming and mining has pushed parts of the forest "
-    "toward a drier, savanna-like state, and researchers warn that continued "
-    "loss could tip the system past recovery. Describe the main ecological "
-    "functions of the Amazon rainforest and the pressures it faces."
-)
-SPEED_PROBE_TOKENS = 128
+# Grading vCPUs are shared/slower than the bench container's (spec §8):
+# ship a max_tokens_cap well inside the measured 30 s estimate.
+SHIP_CAP_MARGIN = 0.6
+SHIP_CAP_RANGE = (64, 200)
 
-# name, bench subdir, needs /no_think (thinking-capable models).
+# name, bench subdir, needs /no_think.
 CANDIDATES = (
-    ("Qwen3.5-4B", "qwen3.5-4b", True),
     ("SmolLM3-3B", "smollm3-3b", True),
-    ("Gemma-3-4B-it-QAT", "gemma-3-4b-it-qat", False),
-    ("Phi-4-mini-instruct", "phi-4-mini", False),
     ("Llama-3.2-3B-Instruct", "llama-3.2-3b", False),
+    ("Qwen3.5-4B", "qwen3.5-4b", True),
+    ("Phi-4-mini-instruct", "phi-4-mini", False),
+    ("Qwen2.5-1.5B-Instruct", "qwen2.5-1.5b", False),
+    ("Qwen2.5-3B-Instruct", "qwen2.5-3b", False),
 )
-BASELINE_NAME = "Qwen2.5-0.5B"
-BASELINE_GLOB = str(SHIPPED_DIR / "qwen2.5-0.5b*.gguf")
+BASELINE = ("Qwen2.5-0.5B", "qwen2.5-0.5b", False)
 
-# Candidates that could not be resolved at all (spec §2: log, don't fail).
 PRE_SKIPPED = (
-    {
-        "model": "Qwen3.5-2B-Instruct",
-        "verdict": "SKIPPED",
-        "reason": "No such model on Hugging Face (Qwen3.5 family starts at 4B); "
-                  "benchmarked Qwen3.5-4B as the nearest Qwen candidate instead.",
-    },
+    {"model": "Gemma-3-4B-it-QAT", "verdict": "SKIPPED",
+     "reason": "excluded this round (spec §2): worst v1 RAM overflow and "
+               "math regressed to 0.60"},
 )
 
-_THINK_RE = re.compile(r"<think>.*?(?:</think>|\Z)", re.DOTALL)
+
+def sh(args, **kwargs):
+    return subprocess.run(args, capture_output=True, text=True,
+                          encoding="utf-8", errors="replace", **kwargs)
 
 
-# ---------------------------------------------------------------- child mode
+def ensure_docker() -> None:
+    if shutil.which("docker") is None:
+        sys.exit(
+            "docker not found on PATH. The v2 bench needs Docker Desktop "
+            "(linux containers / WSL2). Install it, then re-run "
+            "`python eval/bench_models.py` from agent/."
+        )
+    probe = sh(["docker", "info", "--format", "{{.OSType}}"])
+    if probe.returncode != 0:
+        sys.exit(f"docker daemon not reachable: {probe.stderr.strip()}")
+    if probe.stdout.strip() != "linux":
+        sys.exit("Docker is in Windows-containers mode; switch to Linux containers.")
 
-class _PROCESS_MEMORY_COUNTERS(ctypes.Structure):
-    _fields_ = [
-        ("cb", ctypes.c_uint32), ("PageFaultCount", ctypes.c_uint32),
-        ("PeakWorkingSetSize", ctypes.c_size_t), ("WorkingSetSize", ctypes.c_size_t),
-        ("QuotaPeakPagedPoolUsage", ctypes.c_size_t), ("QuotaPagedPoolUsage", ctypes.c_size_t),
-        ("QuotaPeakNonPagedPoolUsage", ctypes.c_size_t), ("QuotaNonPagedPoolUsage", ctypes.c_size_t),
-        ("PagefileUsage", ctypes.c_size_t), ("PeakPagefileUsage", ctypes.c_size_t),
+
+def ensure_image() -> None:
+    if sh(["docker", "image", "inspect", IMAGE]).returncode == 0:
+        return
+    print(f"Building bench image {IMAGE} (linux/amd64)...", flush=True)
+    build = subprocess.run(
+        ["docker", "buildx", "build", "--platform", "linux/amd64",
+         "--load", "-t", IMAGE, "-f", "eval/Dockerfile.bench", "."],
+        cwd=AGENT_DIR, timeout=2400,
+    )
+    if build.returncode != 0:
+        sys.exit("bench image build failed")
+
+
+def run_container(name: str, subdir: str, no_think: bool, footprint: dict) -> dict:
+    """One capped container run. Returns {oom, exit_code, error}."""
+    container = f"bench_{subdir.replace('.', '_')}"
+    sh(["docker", "rm", "-f", container])  # stale leftovers
+
+    model_dir = (BENCH_DIR / subdir).resolve()
+    cmd = [
+        "docker", "run", "--name", container, *DOCKER_LIMITS,
+        "-e", "OMP_NUM_THREADS=2",
+        "-e", f"CTX={footprint['CTX']}", "-e", f"KV={footprint['KV']}",
+        "-v", f"{str(model_dir).replace(chr(92), '/')}:/model:ro",
+        "-v", f"{str(OUT_DIR).replace(chr(92), '/')}:/out",
+        IMAGE, "python", "/app/eval/bench_one.py",
+        "--model", "/model/model.gguf", "--name", subdir,
     ]
-
-
-def peak_rss_bytes() -> int:
-    """Peak RSS of this process (Windows PeakWorkingSet / POSIX ru_maxrss)."""
-    if os.name == "nt":
-        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
-        get_info = kernel32.K32GetProcessMemoryInfo
-        get_info.argtypes = [ctypes.c_void_p,
-                             ctypes.POINTER(_PROCESS_MEMORY_COUNTERS),
-                             ctypes.c_uint32]
-        get_info.restype = ctypes.c_int
-        kernel32.GetCurrentProcess.restype = ctypes.c_void_p
-
-        pmc = _PROCESS_MEMORY_COUNTERS()
-        pmc.cb = ctypes.sizeof(pmc)
-        if not get_info(kernel32.GetCurrentProcess(), ctypes.byref(pmc), pmc.cb):
-            raise ctypes.WinError(ctypes.get_last_error())
-        return int(pmc.PeakWorkingSetSize)
-    import resource
-    ru_maxrss = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
-    return int(ru_maxrss if sys.platform == "darwin" else ru_maxrss * 1024)
-
-
-class NoThinkLocalModel:
-    """LocalModel wrapper for thinking-capable candidates: prepends the
-    /no_think soft switch and strips any <think> block that slips
-    through (an unclosed block truncates to nothing — correctly scoring
-    a model that spent its whole token cap thinking)."""
-
-    def __init__(self, inner):
-        self._inner = inner
-        self.stats = inner.stats
-        self.max_tokens_cap = inner.max_tokens_cap
-
-    def generate(self, messages, max_tokens, deadline=None):
-        messages = [dict(m) for m in messages]
-        if messages and messages[0].get("role") == "system":
-            messages[0]["content"] = "/no_think\n" + messages[0]["content"]
-        else:
-            messages.insert(0, {"role": "system", "content": "/no_think"})
-        raw = self._inner.generate(messages, max_tokens, deadline)
-        return _THINK_RE.sub("", raw).strip()
-
-
-def measure_one(model_path: str, no_think: bool) -> dict:
-    """Child-process measurement of a single GGUF (spec §3 steps 1-5)."""
-    from io_utils import load_config
-    from judge import heuristic_judge
-    from local_model import LocalModel
-    from run_eval import load_dev_set
-    from solve import LOCAL, resolve_model_tiers, solve_task
-
-    record = {"model_path": model_path,
-              "file_size_gb": round(os.path.getsize(model_path) / 1e9, 2)}
-
-    # -- load (timed)
-    started = time.monotonic()
-    lm = LocalModel(model_path, n_ctx=BENCH_CTX, n_threads=BENCH_THREADS,
-                    max_tokens_cap=256)
-    record["load_s"] = round(time.monotonic() - started, 1)
-    model = NoThinkLocalModel(lm) if no_think else lm
-
-    # -- warmup (first call pays one-time init costs)
-    model.generate([{"role": "user", "content": "Say OK."}], max_tokens=8,
-                   deadline=time.monotonic() + 60)
-
-    # -- speed probe: stream 128 tokens; first token time ~= prefill
-    prompt_tokens = len(lm._llama.tokenize(SPEED_PROBE_PROMPT.encode("utf-8")))
-    t0 = time.monotonic()
-    t_first = None
-    n_tokens = 0
-    stream = lm._llama.create_chat_completion(
-        messages=[{"role": "user", "content": SPEED_PROBE_PROMPT}],
-        max_tokens=SPEED_PROBE_TOKENS, temperature=0.0, stream=True,
-    )
-    for chunk in stream:
-        if chunk["choices"][0]["delta"].get("content"):
-            if t_first is None:
-                t_first = time.monotonic()
-            n_tokens += 1
-        if time.monotonic() - t0 > 120:  # probe safety net
-            break
-    t_end = time.monotonic()
-
-    prefill_s = (t_first or t_end) - t0
-    decode_s = max(t_end - (t_first or t_end), 1e-6)
-    record["prefill_tok_s"] = round(prompt_tokens / max(prefill_s, 1e-6), 1)
-    record["decode_tok_s"] = round(max(n_tokens - 1, 0) / decode_s, 1)
-    record["est_tokens_30s"] = max(
-        0, int(record["decode_tok_s"] * (30 - prefill_s - 1))
-    )
-
-    # -- quality: real solve pipeline, route forced LOCAL, offline judge
-    config = load_config()
-    config.update({
-        "allowed_models": ["offline-bench"],   # never called: escalation off
-        "escalate_malformed_local": False,
-        "local_task_budget_s": BENCH_TASK_BUDGET_S,
-    })
-    tiers = resolve_model_tiers(config["allowed_models"])
-    tasks = [t for t in load_dev_set() if t["category"] in LOCAL_CATEGORIES]
-
-    per_category = {}
-    for task in tasks:
-        result = solve_task(task, None, model, tiers, config, route=LOCAL)
-        passed = heuristic_judge(task["category"], result["answer"], task["expected"])
-        n, p = per_category.get(task["category"], (0, 0))
-        per_category[task["category"]] = (n + 1, p + (1 if passed else 0))
-
-    record["pass_by_category"] = {
-        cat: round(p / n, 2) for cat, (n, p) in sorted(per_category.items())
-    }
-    total_n = sum(n for n, _ in per_category.values())
-    total_p = sum(p for _, p in per_category.values())
-    record["overall_pass"] = round(total_p / total_n, 2) if total_n else 0.0
-
-    record["peak_rss_gb"] = round(peak_rss_bytes() / 1e9, 2)
-    record["local_stats"] = lm.stats.summary()
-    return record
-
-
-# --------------------------------------------------------------- parent mode
-
-def run_child(name: str, gguf: str, no_think: bool) -> dict:
-    """Run one candidate's measurement in a subprocess; DISCARD on error."""
-    cmd = [sys.executable, str(Path(__file__).resolve()), "--measure", gguf]
     if no_think:
         cmd.append("--no-think")
-    env = dict(os.environ, OMP_NUM_THREADS=str(BENCH_THREADS))
-    print(f"\n=== {name}: measuring {Path(gguf).name} ...", flush=True)
-    try:
-        proc = subprocess.run(
-            cmd, capture_output=True, text=True, encoding="utf-8",
-            errors="replace", timeout=CHILD_TIMEOUT_S, env=env,
-        )
-    except subprocess.TimeoutExpired:
-        return {"model": name, "verdict": "DISCARD",
-                "reason": f"benchmark exceeded {CHILD_TIMEOUT_S}s"}
 
-    if proc.returncode != 0:
-        tail = (proc.stderr or "").strip().splitlines()[-3:]
-        return {"model": name, "verdict": "DISCARD",
-                "reason": "measurement crashed: " + " | ".join(tail)}
+    print(f"    ctx={footprint['CTX']} kv={footprint['KV']} ...", flush=True)
     try:
-        record = json.loads(proc.stdout.strip().splitlines()[-1])
-    except (ValueError, IndexError):
-        return {"model": name, "verdict": "DISCARD",
-                "reason": "measurement produced no JSON"}
-    record["model"] = name
-    return record
+        proc = sh(cmd, timeout=CONTAINER_TIMEOUT_S)
+    except subprocess.TimeoutExpired:
+        sh(["docker", "kill", container])
+        sh(["docker", "rm", "-f", container])
+        return {"oom": False, "exit_code": -1,
+                "error": f"bench exceeded {CONTAINER_TIMEOUT_S}s"}
+
+    inspect = sh(["docker", "inspect", "-f", "{{.State.OOMKilled}}", container])
+    oom = inspect.stdout.strip() == "true" or proc.returncode == 137
+    sh(["docker", "rm", "-f", container])
+
+    error = ""
+    if proc.returncode != 0 and not oom:
+        error = " | ".join((proc.stderr or "").strip().splitlines()[-3:])
+    return {"oom": oom, "exit_code": proc.returncode, "error": error}
+
+
+def bench_candidate(name: str, subdir: str, no_think: bool) -> dict:
+    """Run with the default footprint; retry tighter on OOM (spec §4.2)."""
+    gguf = BENCH_DIR / subdir / "model.gguf"
+    if not gguf.exists():
+        return {"model": name, "verdict": "SKIPPED",
+                "reason": f"no weights at models/bench/{subdir}/model.gguf "
+                          "(download failed or repo unavailable)"}
+
+    print(f"\n=== {name}", flush=True)
+    outcome = run_container(name, subdir, no_think, DEFAULT_FOOTPRINT)
+    retried = False
+    if outcome["oom"]:
+        print("    OOM-killed; retrying with the tight footprint", flush=True)
+        retried = True
+        outcome = run_container(name, subdir, no_think, RETRY_FOOTPRINT)
+
+    record = {"model": name,
+              "file_size_gb": round(gguf.stat().st_size / 1e9, 2),
+              "oom_under_4g": outcome["oom"],
+              "completed_batch": False}
+
+    if outcome["oom"]:
+        record["verdict"] = "DISCARD"
+        record["reason"] = ("OOM under 4g (even at ctx=1024/KV q4_0)"
+                            if retried else "OOM under 4g")
+        return record
+    if outcome["exit_code"] != 0:
+        record["verdict"] = "DISCARD"
+        record["reason"] = f"container failed: {outcome['error'] or outcome['exit_code']}"
+        return record
+
+    result_file = OUT_DIR / f"{subdir}.json"
+    try:
+        measured = json.loads(result_file.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        record["verdict"] = "DISCARD"
+        record["reason"] = f"no result file after run: {exc}"
+        return record
+
+    measured.update(record, model=name)
+    if retried:
+        measured["reason_note"] = "needed tight footprint (ctx=1024/KV q4_0)"
+    return measured
 
 
 def apply_gates(record: dict, baseline: dict) -> None:
-    """Set fits_4gb / verdict / reason on a measured record (spec §1)."""
-    if record.get("verdict") == "DISCARD":  # crashed/timed out earlier
-        record.setdefault("fits_4gb", False)
+    if record.get("verdict") in ("SKIPPED", "DISCARD"):
         return
 
-    record["fits_4gb"] = record["peak_rss_gb"] < MAX_PEAK_RSS_GB
     reasons = []
-    if not record["fits_4gb"]:
-        reasons.append(f"peak RSS {record['peak_rss_gb']} GB > {MAX_PEAK_RSS_GB} GB")
     if record["load_s"] >= MAX_LOAD_S:
         reasons.append(f"load {record['load_s']}s >= {MAX_LOAD_S}s")
     if record["est_tokens_30s"] < MIN_TOKENS_30S:
@@ -284,16 +205,17 @@ def apply_gates(record: dict, baseline: dict) -> None:
             f"only ~{record['est_tokens_30s']} tokens fit in 30s (< {MIN_TOKENS_30S})"
         )
 
-    if baseline is not None and record is not baseline:
-        if record["overall_pass"] <= baseline["overall_pass"]:
+    if record is not baseline:
+        base = baseline if baseline and "overall_pass" in baseline else FALLBACK_BASELINE
+        if record["overall_pass"] < base["overall_pass"]:
             reasons.append(
-                f"overall {record['overall_pass']:.2f} not above baseline "
-                f"{baseline['overall_pass']:.2f}"
+                f"overall {record['overall_pass']:.2f} below baseline "
+                f"{base['overall_pass']:.2f}"
             )
         regressed = [
             cat for cat in OBJECTIVE_CATEGORIES
             if record["pass_by_category"].get(cat, 0)
-            < baseline["pass_by_category"].get(cat, 0)
+            < base["pass_by_category"].get(cat, 0)
         ]
         if regressed:
             reasons.append("regresses " + "/".join(regressed) + " vs baseline")
@@ -303,25 +225,28 @@ def apply_gates(record: dict, baseline: dict) -> None:
     else:
         record["verdict"] = "KEEP" if not reasons else "DISCARD"
     record["reason"] = "; ".join(reasons)
+    if record.get("reason_note"):
+        record["reason"] = "; ".join(filter(None, [record["reason"],
+                                                   record.pop("reason_note")]))
 
 
 def pick_winner(records: list) -> tuple:
-    """(winner, forced) per spec §4; forced=True when no candidate KEEPs."""
+    """(winner, forced) per spec §5; forced=True when no candidate KEEPs."""
     keepers = [r for r in records if r.get("verdict") == "KEEP"]
     if keepers:
         keepers.sort(key=lambda r: (-r["overall_pass"], -r["decode_tok_s"],
                                     r["file_size_gb"]))
         return keepers[0], False
 
-    fitting = [r for r in records
-               if r.get("fits_4gb") and "overall_pass" in r]
-    if not fitting:
+    survivors = [r for r in records
+                 if r.get("completed_batch") and not r.get("oom_under_4g")]
+    if not survivors:
         return None, True
-    fitting.sort(key=lambda r: -r["overall_pass"])
-    return fitting[0], True
+    survivors.sort(key=lambda r: -r["overall_pass"])
+    return survivors[0], True
 
 
-def write_report(records: list, winner: dict, forced: bool, gemma_note: str) -> None:
+def write_report(records: list, winner: dict, forced: bool) -> None:
     RESULTS_JSON.write_text(
         json.dumps(records, indent=2, ensure_ascii=False), encoding="utf-8",
     )
@@ -330,19 +255,21 @@ def write_report(records: list, winner: dict, forced: bool, gemma_note: str) -> 
         return fmt.format(r[key]) if key in r else "—"
 
     lines = [
-        "# Local model benchmark — Track 1",
+        "# Local model benchmark v2 — container-based (Track 1)",
         "",
-        f"Bench box: Windows host, llama.cpp `n_threads={BENCH_THREADS}` + "
-        f"`OMP_NUM_THREADS={BENCH_THREADS}` (2-vCPU emulation), ctx {BENCH_CTX}, "
-        "temperature 0, thinking disabled. Peak RSS is the per-model subprocess "
-        "peak working set — a proxy for the 4 GB cgroup limit of the grading box. "
-        "Quality = offline heuristic judge over the 30 locally-served dev tasks "
-        "(factual, math, sentiment, summarization, ner, logic); code categories "
-        "route to Fireworks in production and do not weigh on local selection.",
+        "Each candidate ran inside a `linux/amd64` container capped at "
+        "`--memory=4g --memory-swap=4g --cpus=2` — the submission shape — so "
+        "the RAM verdict is the kernel's OOM pass/fail (`State.OOMKilled`), "
+        "not a host-RSS guess (v1's mistake). Footprint: ctx 1536 + q8_0 KV "
+        "cache by default, one OOM retry at ctx 1024 + q4_0. Quality = "
+        "offline heuristic judge over the 30 locally-served dev tasks; code "
+        "categories route to Fireworks in production. Speed here is still "
+        "optimistic vs the shared grading vCPUs — the shipped token cap "
+        f"takes a {SHIP_CAP_MARGIN:.0%} margin on the 30 s estimate.",
         "",
-        "| model | size(GB) | load(s) | peakRAM(GB) | fits4GB | decode tok/s | "
-        "est tok≤30s | overall pass | math | ner | sentiment | verdict |",
-        "|---|---|---|---|---|---|---|---|---|---|---|---|",
+        "| model | size(GB) | load(s) | OOM@4g | cgroup peak(GB) | ctx/KV | "
+        "decode tok/s | est tok≤30s | overall | math | ner | sentiment | verdict |",
+        "|---|---|---|---|---|---|---|---|---|---|---|---|---|",
     ]
     ranked = sorted(
         records,
@@ -350,9 +277,10 @@ def write_report(records: list, winner: dict, forced: bool, gemma_note: str) -> 
     )
     for r in ranked:
         cats = r.get("pass_by_category", {})
+        ctx_kv = f"{r['ctx']}/{r['kv']}" if "ctx" in r else "—"
         lines.append(
             f"| {r['model']} | {cell(r, 'file_size_gb')} | {cell(r, 'load_s')} | "
-            f"{cell(r, 'peak_rss_gb')} | {cell(r, 'fits_4gb')} | "
+            f"{cell(r, 'oom_under_4g')} | {cell(r, 'cgroup_peak_gb')} | {ctx_kv} | "
             f"{cell(r, 'decode_tok_s')} | {cell(r, 'est_tokens_30s')} | "
             f"{cell(r, 'overall_pass')} | {cats.get('math', '—')} | "
             f"{cats.get('ner', '—')} | {cats.get('sentiment', '—')} | "
@@ -361,55 +289,63 @@ def write_report(records: list, winner: dict, forced: bool, gemma_note: str) -> 
 
     lines.append("")
     if winner is None:
-        lines.append("**No candidate fit the grading box — investigate before shipping.**")
+        lines.append("**No candidate survived the 4 GB container — investigate before shipping.**")
     else:
         lines.append(
             f"**Winner: {winner['model']}** — overall pass "
-            f"{winner['overall_pass']:.2f}, {winner['decode_tok_s']} decode tok/s, "
-            f"{winner['file_size_gb']} GB, peak RSS {winner['peak_rss_gb']} GB, "
-            f"load {winner['load_s']}s."
+            f"{winner['overall_pass']:.2f}, {winner['decode_tok_s']} decode tok/s "
+            f"in-container, {winner['file_size_gb']} GB, survived the full batch "
+            f"under 4 GB (cgroup peak {winner.get('cgroup_peak_gb', '?')} GB, "
+            f"ctx {winner.get('ctx')}/{winner.get('kv')} KV)."
         )
         if forced:
             lines.append(
                 "**WARNING: no candidate passed every hard gate.** This is the "
-                "best RAM-fitting model; the 30 s limit forces shorter outputs — "
-                "lower `local_max_tokens_cap` accordingly."
+                "best model that survives 4 GB; the 30 s limit forces a lower "
+                "`local_max_tokens_cap`."
             )
-    if gemma_note:
-        lines.append("")
-        lines.append(gemma_note)
     REPORT_MD.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
     print("\n".join(lines))
     print(f"\nWrote {RESULTS_JSON} and {REPORT_MD}")
 
 
+def ship_cap_from(record: dict) -> int:
+    lo, hi = SHIP_CAP_RANGE
+    return max(lo, min(hi, int(record["est_tokens_30s"] * SHIP_CAP_MARGIN)))
+
+
 def cleanup(records: list, winner: dict) -> None:
-    """Spec §6: plan, copy winner to shipped path, delete losers."""
-    keep_fallback = os.environ.get("KEEP_FALLBACK") == "1"
+    """Spec §7: plan, install winner into models/ + config.json, delete losers."""
+    by_model = {r["model"]: r for r in records}
+    subdir_of = {name: subdir for name, subdir, _ in (*CANDIDATES, BASELINE)}
+
     fallback = None
-    if keep_fallback:
-        fitting = [r for r in records
-                   if r.get("fits_4gb") and r is not winner and "file_size_gb" in r]
-        if fitting:
-            fallback = min(fitting, key=lambda r: r["file_size_gb"])
+    if os.environ.get("KEEP_FALLBACK") == "1":
+        floors = [r for r in records
+                  if r.get("completed_batch") and not r.get("oom_under_4g")
+                  and r is not winner]
+        if floors:
+            fallback = min(floors, key=lambda r: r["file_size_gb"])
 
-    kept_paths = {Path(winner["model_path"]).resolve()}
-    if fallback:
-        kept_paths.add(Path(fallback["model_path"]).resolve())
+    kept_records = [winner] + ([fallback] if fallback else [])
+    kept_sources = {}
+    for r in kept_records:
+        src = (BENCH_DIR / subdir_of[r["model"]] / "model.gguf").resolve()
+        kept_sources[src] = (SHIPPED_DIR / f"{subdir_of[r['model']]}.gguf").resolve()
 
-    delete_paths = []
-    for pattern in (str(BENCH_DIR / "*" / "*.gguf"), str(SHIPPED_DIR / "*.gguf")):
-        for f in glob.glob(pattern):
-            p = Path(f).resolve()
-            if p not in kept_paths:
-                delete_paths.append(p)
-
+    delete_paths = [
+        Path(f).resolve()
+        for pattern in (str(BENCH_DIR / "*" / "*.gguf"), str(SHIPPED_DIR / "*.gguf"))
+        for f in glob.glob(pattern)
+        if Path(f).resolve() not in kept_sources
+        and Path(f).resolve() not in kept_sources.values()
+    ]
     freed = sum(p.stat().st_size for p in delete_paths)
+
     print("\n=== Cleanup plan ===")
-    print(f"KEEP  (winner):   {winner['model_path']}")
-    if fallback:
-        print(f"KEEP  (fallback): {fallback['model_path']}")
+    for src, dst in kept_sources.items():
+        print(f"KEEP: {src} -> {dst}")
     for p in delete_paths:
         print(f"DELETE ({p.stat().st_size / 1e9:.2f} GB): {p}")
     print(f"Would free ~{freed / 1e9:.2f} GB")
@@ -419,96 +355,64 @@ def cleanup(records: list, winner: dict) -> None:
         return
 
     # Copy kept weights into the shipped dir BEFORE deleting anything.
-    shipped = []
-    for record in ([winner] + ([fallback] if fallback else [])):
-        src = Path(record["model_path"]).resolve()
-        dst = (SHIPPED_DIR / src.name).resolve()
-        if src != dst:
-            print(f"Copying {src.name} -> {dst}")
+    for src, dst in kept_sources.items():
+        if not dst.exists():
+            print(f"Copying {src} -> {dst}")
             shutil.copy2(src, dst)
-        shipped.append(dst)
 
+    winner_file = kept_sources[
+        (BENCH_DIR / subdir_of[winner["model"]] / "model.gguf").resolve()
+    ]
     config_path = AGENT_DIR / "config.json"
     config = json.loads(config_path.read_text(encoding="utf-8"))
-    config["local_model_path"] = f"models/{shipped[0].name}"
+    config["local_model_path"] = f"models/{winner_file.name}"
+    config["local_ctx"] = winner.get("ctx", 1536)
+    config["local_kv_type"] = winner.get("kv", "q8_0")
+    config["local_max_tokens_cap"] = ship_cap_from(winner)
     config_path.write_text(json.dumps(config, indent=2) + "\n", encoding="utf-8")
-    print(f"config.json local_model_path -> models/{shipped[0].name}")
+    print(f"config.json: local_model_path=models/{winner_file.name} "
+          f"local_ctx={config['local_ctx']} local_kv_type={config['local_kv_type']} "
+          f"local_max_tokens_cap={config['local_max_tokens_cap']}")
 
     for p in delete_paths:
         p.unlink()
     if BENCH_DIR.exists():
-        shutil.rmtree(BENCH_DIR)  # bench copies of kept models included
+        shutil.rmtree(BENCH_DIR)
     print(f"Freed ~{freed / 1e9:.2f} GB")
-    print("Final shipped model(s): " + ", ".join(str(s) for s in shipped))
+    print("Final shipped model(s): "
+          + ", ".join(str(d) for d in kept_sources.values()))
 
 
 def main() -> int:
-    # Windows consoles default to cp1252, which cannot print "≤" etc.
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--measure", metavar="GGUF",
-                        help="child mode: measure one model, print JSON")
-    parser.add_argument("--no-think", action="store_true",
-                        help="child mode: apply the /no_think switch")
-    args = parser.parse_args()
+    ensure_docker()
+    ensure_image()
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
 
-    if args.measure:
-        record = measure_one(args.measure, args.no_think)
-        print(json.dumps(record))
-        return 0
+    baseline = bench_candidate(*BASELINE)
+    records = [bench_candidate(name, subdir, no_think)
+               for name, subdir, no_think in CANDIDATES]
+    records.append(baseline)
 
-    records = []
-
-    baseline_files = glob.glob(BASELINE_GLOB)
-    baseline = None
-    if baseline_files:
-        baseline = run_child(BASELINE_NAME, baseline_files[0], no_think=False)
-    else:
-        records.append({"model": BASELINE_NAME, "verdict": "SKIPPED",
-                        "reason": "baseline weights not found in models/"})
-
-    for name, subdir, no_think in CANDIDATES:
-        ggufs = glob.glob(str(BENCH_DIR / subdir / "*.gguf"))
-        if not ggufs:
-            records.append({"model": name, "verdict": "SKIPPED",
-                            "reason": f"no GGUF in models/bench/{subdir} "
-                                      "(download failed or repo unavailable)"})
-            continue
-        records.append(run_child(name, ggufs[0], no_think))
-
-    if baseline is not None:
-        records.append(baseline)
-        apply_gates(baseline, baseline)
+    apply_gates(baseline, baseline)
     for record in records:
-        if record.get("verdict") == "SKIPPED" or record is baseline:
-            continue
-        apply_gates(record, baseline)
-
+        if record is not baseline:
+            apply_gates(record, baseline)
     records.extend(PRE_SKIPPED)
 
     winner, forced = pick_winner(records)
-
-    gemma_note = ""
-    gemma = next((r for r in records if r["model"].startswith("Gemma-3-4B")), None)
-    if (winner and gemma and gemma.get("verdict") == "KEEP"
-            and gemma is not winner
-            and winner["overall_pass"] - gemma["overall_pass"] <= 0.02):
-        gemma_note = (
-            "**Gemma-challenge alternative:** Gemma-3-4B-it-QAT is within 2 points "
-            "of the winner and passes all gates; pairing it locally with Gemma-4 "
-            "on Fireworks strengthens a Best-Use-of-Gemma entry."
-        )
-
-    write_report(records, winner, forced, gemma_note)
+    write_report(records, winner, forced)
 
     if winner is None:
         print("\nNO WINNER — nothing deleted.")
         return 1
 
+    survived = "yes" if not winner.get("oom_under_4g") else "no"
     print(f"\nWINNER: {winner['model']} (pass={winner['overall_pass']:.2f}, "
-          f"decode={winner['decode_tok_s']} tok/s, size={winner['file_size_gb']} GB)")
+          f"decode={winner['decode_tok_s']} tok/s, "
+          f"size={winner['file_size_gb']} GB, survived 4g={survived})")
 
     cleanup(records, winner)
     return 0

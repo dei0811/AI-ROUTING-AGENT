@@ -1,0 +1,34 @@
+# Bench image for local-model selection (BENCHMARK v2).
+#
+# Same base + llama-cpp-python install as the shipping Dockerfile so the
+# measurements transfer to the submission image. Weights are NOT baked:
+# candidates are mounted read-only at /model by eval/bench_models.py,
+# so one image benchmarks every candidate.
+#
+# Build (from agent/):
+#   docker buildx build --platform linux/amd64 -t track1-bench -f eval/Dockerfile.bench .
+FROM python:3.12-slim
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1
+
+WORKDIR /app
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir --only-binary=:all: -r requirements.txt \
+      --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu \
+ || ( apt-get update \
+      && apt-get install -y --no-install-recommends build-essential cmake \
+      && CMAKE_ARGS="-DGGML_NATIVE=OFF" \
+         pip install --no-cache-dir -r requirements.txt \
+      && apt-get purge -y build-essential cmake \
+      && apt-get autoremove -y \
+      && rm -rf /var/lib/apt/lists/* )
+
+# Agent code (the RAM verdict must include it) + the bench harness.
+COPY main.py io_utils.py fireworks_client.py local_model.py classify.py \
+     prompts.py solve.py code_exec.py config.json ./
+COPY eval/ ./eval/
+
+ENTRYPOINT []
+CMD ["python", "/app/eval/bench_one.py", "--help"]

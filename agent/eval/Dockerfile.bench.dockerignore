@@ -1,0 +1,10 @@
+# Per-Dockerfile ignore for the bench image (overrides agent/.dockerignore,
+# which excludes eval/ — the bench image needs it). Weights stay out.
+models/
+tests/
+__pycache__/
+*.pyc
+Dockerfile
+.dockerignore
+eval/out/
+eval/__pycache__/

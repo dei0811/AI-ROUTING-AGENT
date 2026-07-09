@@ -8,8 +8,12 @@
   "local_ctx": 2048,
   "local_max_tokens_cap": 160,
   "escalate_malformed_local": true,
-  "code_exec_categories": ["math"],
-  "local_code_exec_categories": ["math"],
+  "code_exec_categories": [
+    "math"
+  ],
+  "local_code_exec_categories": [
+    "math"
+  ],
   "code_exec_timeout_s": 6,
   "category_routes": {
     "factual": "local",
@@ -43,5 +47,6 @@
     "logic": 128,
     "code_gen": 512,
     "unknown": 256
-  }
+  },
+  "local_model_path": "models/qwen2.5-0.5b-instruct-q4_k_m.gguf"
 }

@@ -443,6 +443,10 @@ def cleanup(records: list, winner: dict) -> None:
 
 
 def main() -> int:
+    # Windows consoles default to cp1252, which cannot print "≤" etc.
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--measure", metavar="GGUF",
                         help="child mode: measure one model, print JSON")

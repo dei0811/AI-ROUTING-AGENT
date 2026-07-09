@@ -1,32 +1,37 @@
 # Bundled local model weights (GGUF)
 
 Weights are **not committed** (see `.gitignore`); they are downloaded here before
-`docker build` and baked into the image. `local_model.py` picks up the first
-`models/*.gguf` automatically — or set `LOCAL_MODEL_PATH` / `local_model_path`
-in `config.json` to choose explicitly. **Keep exactly one `.gguf` here when
-building the image** so the pick is deterministic and the image stays small.
+`docker build` and baked into the image. `config.json` (`local_model_path`) points
+at the shipped file; `LOCAL_MODEL_PATH` overrides it, and with neither set the
+first `models/*.gguf` wins. **Keep exactly one `.gguf` here when building the
+image** so the pick is deterministic and the image stays small.
 
-## Recommended weights (spec §4; grading box = 4 GB RAM, 2 vCPU, CPU-only)
+## Shipped model: Qwen2.5-0.5B-Instruct Q4_K_M (benchmark winner, 2026-07-08)
 
-| Role | Model | File size | Source |
-|------|-------|-----------|--------|
-| **Workhorse (submission default)** | Gemma 3 4B-it QAT Q4_0 | ~2.5 GB | `google/gemma-3-4b-it-qat-q4_0-gguf` (HF, license-gated) or `unsloth/gemma-3-4b-it-qat-GGUF` |
-| Fast tier / fallback | Gemma 3 1B-it QAT Q4_0 | ~0.7 GB | `google/gemma-3-1b-it-qat-q4_0-gguf` or `unsloth/gemma-3-1b-it-qat-GGUF` |
-| Non-Gemma alternative (math/code) | Qwen2.5-3B-Instruct Q4_K_M | ~1.9 GB | `Qwen/Qwen2.5-3B-Instruct-GGUF` |
-| Dev smoke test only | Qwen2.5-0.5B-Instruct Q4_K_M | ~0.4 GB | `Qwen/Qwen2.5-0.5B-Instruct-GGUF` |
+Chosen by `eval/bench_models.py` under grading-box emulation (2 threads, ctx 2048,
+temperature 0) — full data in `eval/BENCHMARK_REPORT.md` / `benchmark_results.json`:
 
-The 0.5B smoke model loads fast and proves the pipeline, but measurably fails
-math/logic (seen on the dev set) — do not ship it. Decide the shipped model by
-running `eval/run_eval.py` per candidate and comparing per-category pass rates.
+- 0.49 GB file, **0.63 GB peak RSS**, 2.7 s load, 20.6 decode tok/s (~566 tokens/30 s)
+- Dev-set pass (heuristic judge, 30 local tasks): **0.90 overall** — math 0.8,
+  NER 1.0, sentiment 1.0, factual 1.0, logic 0.8, summarization 0.8
 
-## Download examples
+**Every 3B–4B candidate failed the 4 GB RAM hard gate** (peak RSS 3.59–4.45 GB vs
+the 3.4 GB limit incl. agent headroom), despite Qwen3.5-4B / SmolLM3-3B /
+Phi-4-mini scoring 0.97: quality is not the local bottleneck on this box — RAM is.
+Consequences and future options:
+
+- The 0.5B answers fast (~20 tok/s at 2 threads), so the 30 s per-task limit is
+  comfortable; escalation to Fireworks covers what it gets wrong.
+- To retry a bigger model, attack RAM first: Q4_0 instead of Q4_K_M, `n_ctx=1024`,
+  smaller compute buffers — then re-run `python eval/bench_models.py`.
+  SmolLM3-3B (3.63 GB peak, 0.97 pass, 7 tok/s) is the closest candidate.
+
+Reproduce the shipped weights:
 
 ```bash
-# Dev smoke test (ungated):
 curl -L -o models/qwen2.5-0.5b-instruct-q4_k_m.gguf \
   https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/qwen2.5-0.5b-instruct-q4_k_m.gguf
-
-# Workhorse (accept the Gemma license on HF first, then use an HF token):
-huggingface-cli download google/gemma-3-4b-it-qat-q4_0-gguf gemma-3-4b-it-q4_0.gguf \
-  --local-dir models/
 ```
+
+Re-run the benchmark (re-downloads candidates into `models/bench/`, ~11 GB):
+see `eval/bench_models.py` docstring; `AUTO_DELETE=0` stops before deleting.

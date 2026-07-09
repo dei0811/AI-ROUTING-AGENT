@@ -111,17 +111,40 @@ def ensure_image() -> None:
         sys.exit("bench image build failed")
 
 
-def run_container(name: str, subdir: str, no_think: bool, footprint: dict) -> dict:
+def stage_weights_volume(subdir: str) -> str:
+    """Copy a candidate's GGUF into a VM-local docker volume.
+
+    Bind mounts from the Windows filesystem go through virtiofs: every
+    page fault on the mmap'd weights crosses the VM boundary, which
+    wrecks load times and token speeds under memory pressure. The
+    grading box reads weights baked into the image (local disk), so a
+    VM-local volume is the faithful shape. Returns the volume name.
+    """
+    volume = f"bench_weights_{subdir.replace('.', '_')}"
+    sh(["docker", "volume", "rm", "-f", volume])
+    src_dir = (BENCH_DIR / subdir).resolve()
+    copy = sh([
+        "docker", "run", "--rm",
+        "-v", f"{str(src_dir).replace(chr(92), '/')}:/src:ro",
+        "-v", f"{volume}:/dst",
+        IMAGE, "cp", "/src/model.gguf", "/dst/model.gguf",
+    ], timeout=900)
+    if copy.returncode != 0:
+        raise RuntimeError(f"staging weights into {volume} failed: {copy.stderr.strip()}")
+    return volume
+
+
+def run_container(name: str, subdir: str, no_think: bool, footprint: dict,
+                  volume: str) -> dict:
     """One capped container run. Returns {oom, exit_code, error}."""
     container = f"bench_{subdir.replace('.', '_')}"
     sh(["docker", "rm", "-f", container])  # stale leftovers
 
-    model_dir = (BENCH_DIR / subdir).resolve()
     cmd = [
         "docker", "run", "--name", container, *DOCKER_LIMITS,
         "-e", "OMP_NUM_THREADS=2",
         "-e", f"CTX={footprint['CTX']}", "-e", f"KV={footprint['KV']}",
-        "-v", f"{str(model_dir).replace(chr(92), '/')}:/model:ro",
+        "-v", f"{volume}:/model:ro",
         "-v", f"{str(OUT_DIR).replace(chr(92), '/')}:/out",
         IMAGE, "python", "/app/eval/bench_one.py",
         "--model", "/model/model.gguf", "--name", subdir,
@@ -157,18 +180,29 @@ def bench_candidate(name: str, subdir: str, no_think: bool) -> dict:
                           "(download failed or repo unavailable)"}
 
     print(f"\n=== {name}", flush=True)
-    outcome = run_container(name, subdir, no_think, DEFAULT_FOOTPRINT)
-    retried = False
-    if outcome["oom"]:
-        print("    OOM-killed; retrying with the tight footprint", flush=True)
-        retried = True
-        outcome = run_container(name, subdir, no_think, RETRY_FOOTPRINT)
-
     record = {"model": name,
               "file_size_gb": round(gguf.stat().st_size / 1e9, 2),
-              "oom_under_4g": outcome["oom"],
+              "oom_under_4g": False,
               "completed_batch": False}
 
+    try:
+        volume = stage_weights_volume(subdir)
+    except RuntimeError as exc:
+        record["verdict"] = "DISCARD"
+        record["reason"] = str(exc)
+        return record
+
+    try:
+        outcome = run_container(name, subdir, no_think, DEFAULT_FOOTPRINT, volume)
+        retried = False
+        if outcome["oom"]:
+            print("    OOM-killed; retrying with the tight footprint", flush=True)
+            retried = True
+            outcome = run_container(name, subdir, no_think, RETRY_FOOTPRINT, volume)
+    finally:
+        sh(["docker", "volume", "rm", "-f", f"bench_weights_{subdir.replace('.', '_')}"])
+
+    record["oom_under_4g"] = outcome["oom"]
     if outcome["oom"]:
         record["verdict"] = "DISCARD"
         record["reason"] = ("OOM under 4g (even at ctx=1024/KV q4_0)"
@@ -187,7 +221,11 @@ def bench_candidate(name: str, subdir: str, no_think: bool) -> dict:
         record["reason"] = f"no result file after run: {exc}"
         return record
 
-    measured.update(record, model=name)
+    # Merge without clobbering what bench_one measured in-container
+    # (its completed_batch=True is the survival evidence).
+    for key, value in record.items():
+        measured.setdefault(key, value)
+    measured["model"] = name
     if retried:
         measured["reason_note"] = "needed tight footprint (ctx=1024/KV q4_0)"
     return measured

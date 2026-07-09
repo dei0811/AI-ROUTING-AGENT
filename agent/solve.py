@@ -26,6 +26,7 @@ of paying for (or slowly decoding) chain-of-thought tokens.
 
 import json
 import logging
+import os
 import re
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -364,6 +365,17 @@ def solve_task(task: dict, client, local_model, models_by_tier: dict,
         the prompt is empty or every attempt failed (the id must still
         be covered in the output).
     """
+    started = time.monotonic()
+    result = _solve_task(task, client, local_model, models_by_tier, config, route)
+    if os.environ.get("BENCH_TIMING") == "1":
+        # Per-task marker for eval/verify_image.py (<30 s rule).
+        print(f"TASK {result['task_id']} {time.monotonic() - started:.2f}",
+              flush=True)
+    return result
+
+
+def _solve_task(task: dict, client, local_model, models_by_tier: dict,
+                config: dict, route: str = None) -> dict:
     task_id = task["task_id"]
     prompt = task["prompt"]
 

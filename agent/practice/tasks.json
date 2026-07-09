@@ -1,0 +1,34 @@
+[
+  {
+    "task_id": "practice-01",
+    "prompt": "What is the capital of Australia?"
+  },
+  {
+    "task_id": "practice-02",
+    "prompt": "A store has 240 items in stock. On Monday, 15% of the items are sold. On Tuesday, 60 more items are sold. How many items remain in stock?"
+  },
+  {
+    "task_id": "practice-03",
+    "prompt": "Classify the sentiment of this review as positive, negative or neutral: 'The delivery was quick and the packaging was beautiful, but the product itself stopped working after two days.'"
+  },
+  {
+    "task_id": "practice-04",
+    "prompt": "Summarize the following text in one sentence: Remote work adoption surged during the pandemic and has remained well above pre-2020 levels. Many companies now operate hybrid schedules, downsizing their office space while investing in collaboration software. Studies show productivity has stayed stable or improved for most knowledge workers, though junior employees report fewer mentoring opportunities."
+  },
+  {
+    "task_id": "practice-05",
+    "prompt": "Extract the person names, organizations and locations from the following sentence and output them as JSON: 'Maria Sanchez, CEO of Fireworks AI, announced a new partnership during a conference in Berlin.'"
+  },
+  {
+    "task_id": "practice-06",
+    "prompt": "This function should return the largest number in a list, but it returns wrong results. Fix the bug and output the corrected code:\n```python\ndef get_max(numbers):\n    max_num = 0\n    for n in numbers:\n        if n > max_num:\n            max_num = n\n    return max_num\n```"
+  },
+  {
+    "task_id": "practice-07",
+    "prompt": "Sam, Jo and Lee each own exactly one pet: a dog, a cat or a fish. Sam is allergic to fur, so Sam does not own the dog or the cat. Jo does not own the cat. Which pet does each person own?"
+  },
+  {
+    "task_id": "practice-08",
+    "prompt": "Write a Python function named second_largest that returns the second-largest value in a list of integers, handling duplicates correctly (e.g. [5, 5, 4] -> 4). Output only the code."
+  }
+]

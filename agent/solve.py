@@ -252,16 +252,30 @@ def _solve_via_code_fireworks(prompt: str, client, model: str, max_tokens: int,
     return _exec_emitted(completion, timeout_s, deadline)
 
 
+# Budget reserved out of the emit-code generation window so the code
+# execution and a direct-answer fallback still fit the same task
+# deadline on a ~5 tok/s CPU model (measured: without this the math
+# path overran 30 s and shipped an empty answer).
+_LOCAL_FALLBACK_RESERVE_S = 8.0
+
 def _solve_via_code_local(prompt: str, local_model, max_tokens: int,
                           timeout_s: float, deadline: float) -> str:
-    """Free emit-code path: local model writes the program."""
+    """Free emit-code path: local model writes the program.
+
+    Generation stops early enough (task deadline minus exec timeout and
+    fallback reserve) that a failed program still leaves budget for the
+    direct-answer fallback.
+    """
+    emit_deadline = deadline - timeout_s - _LOCAL_FALLBACK_RESERVE_S
+    if emit_deadline - time.monotonic() < 2.0:
+        return None  # no room to emit anything useful; go straight to direct
     completion = local_model.generate(
         [
             {"role": "system", "content": CODE_EMIT_SYSTEM_PROMPT},
             {"role": "user", "content": prompt},
         ],
         max_tokens=max_tokens,
-        deadline=deadline,
+        deadline=emit_deadline,
     )
     return _exec_emitted(completion, timeout_s, deadline)
 

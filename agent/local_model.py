@@ -133,6 +133,11 @@ class LocalModel:
         Returns:
             The (possibly deadline-truncated) completion text.
         """
+        if deadline is not None and time.monotonic() >= deadline:
+            # Prefill alone would blow the budget; don't start at all.
+            logger.warning("Local generation skipped: deadline already passed")
+            return ""
+
         capped = max(1, min(max_tokens, self.max_tokens_cap))
         started = time.monotonic()
         pieces = []

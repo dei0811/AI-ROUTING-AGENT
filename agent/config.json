@@ -41,7 +41,7 @@
     "factual": 64,
     "math": 160,
     "sentiment": 8,
-    "summarization": 64,
+    "summarization": 48,
     "ner": 256,
     "code_debug": 512,
     "logic": 128,

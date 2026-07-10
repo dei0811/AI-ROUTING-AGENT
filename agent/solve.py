@@ -257,6 +257,10 @@ def _solve_via_code_fireworks(prompt: str, client, model: str, max_tokens: int,
 # deadline on a ~5 tok/s CPU model (measured: without this the math
 # path overran 30 s and shipped an empty answer).
 _LOCAL_FALLBACK_RESERVE_S = 8.0
+# Minimum remaining window for a local direct retry after a failed
+# emit-code attempt: prefill is uninterruptible, so anything shorter
+# just burns the rest of the budget on a truncated answer.
+_DIRECT_FALLBACK_MIN_S = 10.0
 
 def _solve_via_code_local(prompt: str, local_model, max_tokens: int,
                           timeout_s: float, deadline: float) -> str:
@@ -313,6 +317,22 @@ def _solve_local(task_id: str, category: str, prompt: str, local_model,
         )
         if answer is not None:
             return answer, LOCAL
+        # Emit/exec failed. A local direct retry pays another
+        # uninterruptible prefill; without a real window for it, the
+        # existing malformed-answer escalation (one cheap bounded call)
+        # beats shipping a truncated or empty answer.
+        if (deadline - time.monotonic() < _DIRECT_FALLBACK_MIN_S
+                and config.get("escalate_malformed_local", True)
+                and client is not None):
+            logger.info("Task %r: emitted code failed with no local retry "
+                        "window; escalating to Fireworks", task_id)
+            tier = config.get("category_tiers", {}).get(category, "mid")
+            escalated = _validated_complete(
+                client, models_by_tier[tier], category, prompt,
+                max_tokens, deadline,
+            )
+            if escalated:
+                return escalated, "local->fireworks"
 
     raw = local_model.generate(
         build_messages(category, prompt), max_tokens=max_tokens, deadline=deadline,

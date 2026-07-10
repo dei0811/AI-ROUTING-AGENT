@@ -83,11 +83,19 @@ class LocalModel:
     def __init__(self, model_path: str, n_ctx: int = DEFAULT_CTX,
                  n_threads: int = None,
                  max_tokens_cap: int = DEFAULT_MAX_TOKENS_CAP,
-                 kv_type: str = DEFAULT_KV_TYPE):
+                 kv_type: str = DEFAULT_KV_TYPE,
+                 n_batch: int = None, n_ubatch: int = None):
         import llama_cpp
         from llama_cpp import Llama  # lazy: mock mode must not need it
 
         kwargs = {}
+        # Prefill batch sizing: long inputs (summarization) are
+        # prefill-bound at 2 vCPU; larger batches improve prompt
+        # throughput at the cost of a bigger compute buffer (RAM).
+        if n_batch:
+            kwargs["n_batch"] = int(n_batch)
+        if n_ubatch:
+            kwargs["n_ubatch"] = int(n_ubatch)
         if kv_type != "f16":
             if kv_type not in _KV_TYPE_NAMES:
                 raise ValueError(f"kv_type must be one of {_KV_TYPE_NAMES}")
@@ -242,6 +250,8 @@ def make_local_model(config: dict):
                 config.get("local_max_tokens_cap", DEFAULT_MAX_TOKENS_CAP)
             ),
             kv_type=config.get("local_kv_type", DEFAULT_KV_TYPE),
+            n_batch=config.get("local_n_batch"),
+            n_ubatch=config.get("local_n_ubatch"),
         )
     except Exception:
         logger.exception(

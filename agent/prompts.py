@@ -37,10 +37,9 @@ SYSTEM_PROMPTS = {
     # Phase 5 replaces direct math answers with emit-code -> local execution.
     MATH: "Answer with only the final numeric result. No steps.",
     SENTIMENT: "Reply with exactly one word: positive, negative, or neutral.",
-    SUMMARIZATION: (
-        "Summarize in English. Obey any requested length or format. "
-        "Output only the summary."
-    ),
+    # Terse: summarization is prefill-bound on CPU, every input token
+    # costs latency. The user prompt carries the length request.
+    SUMMARIZATION: "Output only the summary, in English.",
     NER: "Extract the requested entities. Output compact JSON only. No prose.",
     CODE_DEBUG: "Output only the corrected code. No explanation.",
     LOGIC: "Answer in English with only the final answer. No reasoning steps.",

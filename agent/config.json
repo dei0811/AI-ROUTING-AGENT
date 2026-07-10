@@ -6,7 +6,7 @@
   "local_task_est_s": 20,
   "flip_reserve_s": 60,
   "local_ctx": 1536,
-  "local_max_tokens_cap": 64,
+  "local_max_tokens_cap": 84,
   "escalate_malformed_local": true,
   "code_exec_categories": [
     "math"
@@ -41,13 +41,13 @@
     "factual": 64,
     "math": 160,
     "sentiment": 8,
-    "summarization": 256,
+    "summarization": 64,
     "ner": 256,
     "code_debug": 512,
     "logic": 128,
     "code_gen": 512,
     "unknown": 256
   },
-  "local_model_path": "models/phi-4-mini.gguf",
+  "local_model_path": "models/llama-3.2-3b.gguf",
   "local_kv_type": "q8_0"
 }

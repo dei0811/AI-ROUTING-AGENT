@@ -77,10 +77,14 @@ def main() -> int:
 
         tasks = load_tasks(input_path)
         client = make_client(config)
+        load_started = time.monotonic()
         local_model = make_local_model(config)
         if os.environ.get("BENCH_TIMING") == "1":
-            # Startup marker for eval/verify_image.py (<60 s rule).
-            print(f"STARTUP_DONE {time.time():.3f}", flush=True)
+            # Startup marker for eval/verify_image.py (<60 s rule); the
+            # suffix splits resident model load out of total startup.
+            print(f"STARTUP_DONE {time.time():.3f} "
+                  f"model_load_s={time.monotonic() - load_started:.1f}",
+                  flush=True)
         results = solve_all(
             tasks, client, config, local_model=local_model, start_time=_START,
         )

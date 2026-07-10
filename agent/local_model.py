@@ -106,6 +106,13 @@ class LocalModel:
             n_ctx=n_ctx,
             n_threads=threads,
             n_threads_batch=threads,
+            # Resident (anonymous) weights: mmap'd weights are clean
+            # pages the 4 GB cgroup reclaims under pressure, and every
+            # prefill then re-faults them from disk (~20 s cold prefills
+            # blew the 30 s/task rule). Resident memory with no swap
+            # cannot be evicted — one bounded fault-in at startup, then
+            # stable speed (or a clean OOM, never silent thrash).
+            use_mmap=False,
             verbose=False,
             **kwargs,
         )

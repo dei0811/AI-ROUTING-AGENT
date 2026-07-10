@@ -234,3 +234,4 @@ CLAUDE_AGENT_SPEC.md
 # Local model weights (bundled into the Docker image, never committed)
 agent/models/*.gguf
 
+agent/out/

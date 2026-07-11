@@ -18,19 +18,25 @@ DEFAULT_TIMEOUT_S = 6.0
 _MAX_OUTPUT_CHARS = 4000
 
 _FENCE_RE = re.compile(r"```(?:python|py)?\s*\n(.*?)```", re.DOTALL)
+# Deadline-truncated completions can end mid-block with no closing ```.
+_OPEN_FENCE_RE = re.compile(r"```(?:python|py)?\s*\n(.*)\Z", re.DOTALL)
 
 
 def extract_code(text: str) -> str:
     """Pull Python code out of a completion.
 
     Takes the fenced ```python block(s) if present (joined in order),
-    otherwise assumes the whole completion is code.
+    falling back to an unclosed trailing fence, otherwise assumes the
+    whole completion is code.
     """
     if not text:
         return ""
     blocks = _FENCE_RE.findall(text)
     if blocks:
         return "\n".join(block.strip() for block in blocks)
+    open_block = _OPEN_FENCE_RE.search(text)
+    if open_block:
+        return open_block.group(1).strip()
     return text.strip()
 
 

@@ -28,6 +28,7 @@ import json
 import logging
 import os
 import re
+import sys
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -402,9 +403,12 @@ def solve_task(task: dict, client, local_model, models_by_tier: dict,
     started = time.monotonic()
     result = _solve_task(task, client, local_model, models_by_tier, config, route)
     if os.environ.get("BENCH_TIMING") == "1":
-        # Per-task marker for eval/verify_image.py (<30 s rule).
-        print(f"TASK {result['task_id']} {time.monotonic() - started:.2f}",
-              flush=True)
+        # Per-task marker for eval/verify_image.py (<30 s rule). One
+        # atomic write: print() emits text and newline separately, so
+        # concurrent pool threads can interleave and corrupt lines.
+        sys.stdout.write(
+            f"TASK {result['task_id']} {time.monotonic() - started:.2f}\n")
+        sys.stdout.flush()
     return result
 
 

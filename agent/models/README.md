@@ -44,3 +44,14 @@ Re-run the model benchmark (needs Docker, re-downloads ~11 GB):
 `python eval/bench_models.py` (`AUTO_DELETE=0` previews without deleting).
 Re-verify the shipping image: `docker buildx build --platform linux/amd64
 -t track1-agent:verify --load .` then `python eval/verify_image.py`.
+
+## Published image
+
+- **Ref:** `luis20072002/track1-agent:v1`
+- **Digest:** `sha256:9b06fca24f2ac891b5d8f95aab26533f524d9e2a9f65ba5151fb4459a70c3a92`
+- **Pull:** `docker pull luis20072002/track1-agent:v1`
+- **Registro:** Docker Hub (público)
+- **Nota:** imagen construida y publicada con `--provenance=false --sbom=false`
+  (manifest linux/amd64 de plataforma única). Verify pasa bajo `--memory=4g
+  --cpus=2`. Submission de infraestructura (Fireworks en mock); pendiente
+  tuning con credenciales reales para v2.

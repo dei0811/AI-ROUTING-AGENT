@@ -218,10 +218,35 @@ class TestShippedConfigRouting(unittest.TestCase):
 
 
 class TestCleanAnswer(unittest.TestCase):
-    def test_sentiment_label_extracted(self):
-        ok, cleaned = clean_answer("sentiment", "The sentiment is Positive.")
+    def test_sentiment_keeps_label_and_reason(self):
+        ok, cleaned = clean_answer(
+            "sentiment", "Positive. The reviewer praises the value.")
         self.assertTrue(ok)
-        self.assertEqual(cleaned, "positive")
+        self.assertEqual(cleaned, "Positive. The reviewer praises the value.")
+
+    def test_sentiment_dual_sided_reason_is_well_formed(self):
+        # Graded tasks demand reasons covering both sides; mentioning
+        # "positive" and "negative" together must not read as malformed.
+        text = ("Neutral: the review notes negative shipping issues but "
+                "positive product quality.")
+        ok, cleaned = clean_answer("sentiment", text)
+        self.assertTrue(ok)
+        self.assertEqual(cleaned, text)
+
+    def test_sentiment_without_any_label_is_malformed(self):
+        ok, _ = clean_answer("sentiment", "It's hard to say either way.")
+        self.assertFalse(ok)
+
+    def test_ner_truncated_array_recovers_all_complete_objects(self):
+        # A token-capped completion cut this array mid-entity; every
+        # complete inner object must survive cleaning.
+        truncated = ('[\n{"text": "Google", "type": "ORGANIZATION"},\n'
+                     '{"text": "Zurich", "type": "LOCATION"},\n{"text": "ETH')
+        ok, cleaned = clean_answer("ner", truncated)
+        self.assertTrue(ok)
+        parsed = json.loads(cleaned)
+        self.assertEqual(len(parsed), 2)
+        self.assertIn({"text": "Zurich", "type": "LOCATION"}, parsed)
 
     def test_ner_json_normalized(self):
         ok, cleaned = clean_answer("ner", 'Sure! ```json\n{"people": ["Ada"]}\n```')

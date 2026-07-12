@@ -33,14 +33,28 @@ CODE_EMIT_SYSTEM_PROMPT = (
 )
 
 SYSTEM_PROMPTS = {
-    FACTUAL: "Answer in English with only the requested fact. No explanation.",
+    FACTUAL: (
+        "Answer in English with the requested fact. If an explanation "
+        "is asked for, give it in at most two short sentences."
+    ),
     # Phase 5 replaces direct math answers with emit-code -> local execution.
     MATH: "Answer with only the final numeric result. No steps.",
-    SENTIMENT: "Reply with exactly one word: positive, negative, or neutral.",
+    # The graded tasks often demand label + reason; a label-only reply
+    # fails their criteria, so never suppress the reason.
+    SENTIMENT: (
+        "State the sentiment label: positive, negative or neutral. "
+        "If a reason is requested, add one sentence covering both sides."
+    ),
     # Terse: summarization is prefill-bound on CPU, every input token
     # costs latency. The user prompt carries the length request.
     SUMMARIZATION: "Output only the summary, in English.",
-    NER: "Extract the requested entities. Output compact JSON only. No prose.",
+    # Compact mapping keeps the whole entity set inside the local
+    # output cap; per-entity {"text":...,"type":...} objects ran ~2x
+    # the tokens and got truncated mid-array.
+    NER: (
+        "Extract the requested entities. Output only compact JSON "
+        "mapping each entity type to a list of strings. No prose."
+    ),
     CODE_DEBUG: "Output only the corrected code. No explanation.",
     LOGIC: "Answer in English with only the final answer. No reasoning steps.",
     CODE_GEN: "Output only the code. No explanation.",

@@ -70,16 +70,34 @@ _CODE_GEN_RE = re.compile(
     re.IGNORECASE | re.DOTALL,
 )
 
+# Strong math cues: unambiguous on their own.
 _MATH_RE = re.compile(
     r"\d\s*[\+\-\*/×÷^%]\s*\d"
-    r"|\b(calculate|compute|solve)\b"
-    r"|\bhow (much|many)\b"
-    r"|\b(sum|product|difference|quotient|average|mean|median|percent(age)?"
-    r"|remainder|equation|integral|derivative|probability|fraction)\b"
+    r"|\b(calculate|compute)\b"
+    r"|\b(percent(age)?|remainder|equation|integral|derivative"
+    r"|probability|fraction)\b"
     r"|\d\s*%"
     r"|=\s*\?",
     re.IGNORECASE,
 )
+
+# Weak math cues: everyday words that also appear in conceptual
+# questions ("the difference between ML and DL", "solve this puzzle").
+# They only mean math when the prompt actually contains numbers —
+# without this gate, comparison questions got the numeric-only math
+# prompt and failed the judge.
+_MATH_WEAK_RE = re.compile(
+    r"\bhow (much|many)\b"
+    r"|\b(solve|sum|product|difference|quotient|average|mean|median)\b",
+    re.IGNORECASE,
+)
+_DIGIT_RE = re.compile(r"\d")
+
+
+def _is_math(prompt: str) -> bool:
+    if _MATH_RE.search(prompt):
+        return True
+    return bool(_MATH_WEAK_RE.search(prompt) and _DIGIT_RE.search(prompt))
 
 _LOGIC_RE = re.compile(
     r"\b(deduce|deduct\w*|infer|premise|syllogism|conclusion|logically"
@@ -109,14 +127,15 @@ _FACTUAL_RE = re.compile(
 # Most-specific first: explicit task verbs beat generic question shapes.
 # Math/logic come after the code categories so "write a function to sum..."
 # lands in code_gen, and before factual so "how many..." lands in math.
+# Each entry is (category, predicate).
 _RULES = (
-    (SENTIMENT, _SENTIMENT_RE),
-    (NER, _NER_RE),
-    (SUMMARIZATION, _SUMMARIZATION_RE),
-    (CODE_GEN, _CODE_GEN_RE),
-    (MATH, _MATH_RE),
-    (LOGIC, _LOGIC_RE),
-    (FACTUAL, _FACTUAL_RE),
+    (SENTIMENT, _SENTIMENT_RE.search),
+    (NER, _NER_RE.search),
+    (SUMMARIZATION, _SUMMARIZATION_RE.search),
+    (CODE_GEN, _CODE_GEN_RE.search),
+    (MATH, _is_math),
+    (LOGIC, _LOGIC_RE.search),
+    (FACTUAL, _FACTUAL_RE.search),
 )
 
 
@@ -137,8 +156,8 @@ def classify(prompt: str) -> str:
     if has_code and _DEBUG_KEYWORDS_RE.search(prompt):
         return CODE_DEBUG
 
-    for category, pattern in _RULES:
-        if pattern.search(prompt):
+    for category, matches in _RULES:
+        if matches(prompt):
             return category
 
     # Code present without debug cues usually means "complete/extend this".

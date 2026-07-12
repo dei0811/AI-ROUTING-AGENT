@@ -140,21 +140,33 @@ def resolve_route(category: str, config: dict, local_model) -> str:
 
 
 def _extract_json(text: str) -> str:
-    """Find and re-serialize the first valid JSON value in ``text``.
+    """Collect every valid JSON value in ``text`` and re-serialize.
 
     Returns compact JSON, or None if nothing parses. Local and free —
-    fixing format here beats paying for a retry call.
+    fixing format here beats paying for a retry call. Gathers ALL
+    parseable values (not just the first): a token-capped completion
+    can truncate an outer array, leaving its complete inner objects
+    behind — keeping only the first silently dropped every other
+    entity in NER answers.
     """
     candidate = extract_code(text)  # also strips ```json fences
     decoder = json.JSONDecoder()
+    values = []
+    parsed_end = 0
     for match in _JSON_START_RE.finditer(candidate):
+        if match.start() < parsed_end:
+            continue  # inside a value we already captured
         try:
-            value, _ = decoder.raw_decode(candidate, match.start())
+            value, end = decoder.raw_decode(candidate, match.start())
         except ValueError:
             continue
         if isinstance(value, (dict, list)):
-            return json.dumps(value, ensure_ascii=False, separators=(",", ":"))
-    return None
+            values.append(value)
+            parsed_end = end
+    if not values:
+        return None
+    result = values[0] if len(values) == 1 else values
+    return json.dumps(result, ensure_ascii=False, separators=(",", ":"))
 
 
 def clean_answer(category: str, text: str) -> tuple:
@@ -171,10 +183,14 @@ def clean_answer(category: str, text: str) -> tuple:
     text = (text or "").strip()
 
     if category == SENTIMENT:
+        # Well-formed = names at least one label. Keep the full text:
+        # graded tasks ask for label + reason, and a dual-sided reason
+        # legitimately mentions both "positive" and "negative" —
+        # collapsing to a bare label (or calling that malformed) fails
+        # their criteria and wasted escalation calls.
         lowered = text.lower()
-        found = [label for label in _SENTIMENT_LABELS if label in lowered]
-        if len(found) == 1:
-            return True, found[0]
+        if any(label in lowered for label in _SENTIMENT_LABELS):
+            return True, text
         return False, text
 
     if category == NER:

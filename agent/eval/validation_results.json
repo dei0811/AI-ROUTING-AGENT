@@ -1,0 +1,62 @@
+[
+  {
+    "task_id": "val-t01",
+    "answer": "The three primary colors in the RGB color model are Red, Green, and Blue.\n\nDisplays use RGB instead of RYB because RGB is additive, meaning that combining different intensities of red, green, and blue light creates a wider range of colors. RYB is subtractive, used in painting, and doesn't produce the same range of colors as RGB.",
+    "category": "unknown",
+    "source": "local"
+  },
+  {
+    "task_id": "val-t01b",
+    "answer": "Machine Learning (ML) and Deep Learning (DL) are both subsets of Artificial Intelligence (AI). \n\nMachine Learning:\nMachine learning is a type of AI that enables systems to learn from data without being explicitly programmed. It works by training algorithms on large datasets, allowing them to identify patterns and make predictions or decisions based on that data.\n\nDeep Learning:\nDeep learning is a subset of machine learning that uses neural networks with multiple layers to analyze data. These neural networks are inspired by the human brain's structure and function, allowing them to learn complex patterns in data, such as images, speech, and text",
+    "category": "factual",
+    "source": "local"
+  },
+  {
+    "task_id": "val-t01c",
+    "answer": "RAM (Random Access Memory) and ROM (Read-Only Memory) are two types of computer memory.\n\nRAM is used for temporarily storing data and applications that the computer is currently running, allowing for quick access and modification. It is volatile, meaning its contents are lost when the computer is powered off.\n\nROM, on the other hand, is used for storing permanent data, such as the BIOS (Basic Input/Output System) that controls the computer's hardware, and is non-volatile, meaning its contents are retained even when the computer is powered off.",
+    "category": "factual",
+    "source": "local"
+  },
+  {
+    "task_id": "val-t02",
+    "answer": "mock answer",
+    "category": "math",
+    "source": "fireworks"
+  },
+  {
+    "task_id": "val-t02b",
+    "answer": "mock answer",
+    "category": "math",
+    "source": "fireworks"
+  },
+  {
+    "task_id": "val-t03",
+    "answer": "The sentiment label is: Neutral\n\nA one-sentence reason: Although the customer experienced some initial issues with delivery and packaging, the product worked as expected and customer support resolved the issue promptly, resulting in a neutral overall sentiment.",
+    "category": "sentiment",
+    "source": "local"
+  },
+  {
+    "task_id": "val-t03b",
+    "answer": "The sentiment label is Positive.\n\nThe reason is that although the customer experienced some issues with the packaging, they were satisfied with the device itself and the ease of setup, outweighing the negative aspects.",
+    "category": "sentiment",
+    "source": "local"
+  },
+  {
+    "task_id": "val-t04",
+    "answer": "Machine learning is being increasingly used in healthcare to improve diagnosis, treatment planning, and patient monitoring, but it also raises concerns about model interpretability, data privacy, and liability. Regulatory frameworks are struggling to keep pace with the rapid deployment of machine learning in healthcare, creating uncertainty for both healthcare providers and technology developers.",
+    "category": "summarization",
+    "source": "local"
+  },
+  {
+    "task_id": "val-t04b",
+    "answer": "• Remote work offers flexibility and reduced commute times for employees.\n• Challenges persist around collaboration, company culture, and personal boundaries.\n• Companies adapt with digital tools and redefined office spaces.",
+    "category": "summarization",
+    "source": "local"
+  },
+  {
+    "task_id": "val-t05",
+    "answer": "{\"PERSON\":[\"Sundar Pichai\"],\"ORGANIZATION\":[\"Google\",\"ETH Zurich\"],\"LOCATION\":[\"Zurich\"],\"DATE\":[\"March 15 2023\"]}",
+    "category": "ner",
+    "source": "local"
+  }
+]

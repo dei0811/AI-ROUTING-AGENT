@@ -7,7 +7,7 @@
   "flip_reserve_s": 60,
   "local_ctx": 1536,
   "local_threads": 2,
-  "local_max_tokens_cap": 84,
+  "local_max_tokens_cap": 120,
   "escalate_malformed_local": true,
   "code_exec_categories": [],
   "local_code_exec_categories": [],
@@ -35,9 +35,9 @@
     "unknown": "mid"
   },
   "category_max_tokens": {
-    "factual": 64,
+    "factual": 120,
     "math": 160,
-    "sentiment": 8,
+    "sentiment": 48,
     "summarization": 64,
     "ner": 256,
     "code_debug": 512,

@@ -42,6 +42,17 @@ class TestClassify(unittest.TestCase):
         prompt = "Write a function to sum a list of integers in Python."
         self.assertEqual(c.classify(prompt), c.CODE_GEN)
 
+    def test_conceptual_difference_question_is_not_math(self):
+        # Weak math words without any digits must not route to math —
+        # the numeric-only math prompt poisons comparison questions.
+        prompt = ("What is the difference between machine learning and "
+                  "deep learning? Briefly explain how each works.")
+        self.assertEqual(c.classify(prompt), c.FACTUAL)
+
+    def test_numeric_difference_question_is_math(self):
+        prompt = "What is the difference between 1024 and 768?"
+        self.assertEqual(c.classify(prompt), c.MATH)
+
     def test_empty_prompt_is_unknown(self):
         self.assertEqual(c.classify(""), c.UNKNOWN)
         self.assertEqual(c.classify("   "), c.UNKNOWN)

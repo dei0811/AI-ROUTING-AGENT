@@ -88,6 +88,12 @@ _LOGIC_RE = re.compile(
     r"|\bif\b.{3,80}\bthen\b"
     r"|\bthan\b.{0,60}\bthan\b"
     r"|\bwho (is|are)\b.{0,40}\b((tall|old|young|short|fast|slow)(er|est)|left|right)\b"
+    # Assignment puzzles: "X, Y and Z each own exactly one pet ...
+    # Which pet does each person own?"
+    r"|\beach\b.{0,40}\b(owns?|has|have|gets?|likes?)\b.{0,20}\bone\b"
+    r"|\b(which|what|who)\b[^.?]{0,60}\bdoes each\b"
+    # Propositional disjunction: "Either it is raining or it is sunny."
+    r"|\beither\b.{3,80}\bor\b"
     r"|true or false",
     re.IGNORECASE | re.DOTALL,
 )

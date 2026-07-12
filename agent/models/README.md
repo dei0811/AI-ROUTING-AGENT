@@ -45,7 +45,30 @@ Re-run the model benchmark (needs Docker, re-downloads ~11 GB):
 Re-verify the shipping image: `docker buildx build --platform linux/amd64
 -t track1-agent:verify --load .` then `python eval/verify_image.py`.
 
-## Published image
+## Published images
+
+### v2 — current (2026-07-12): math & logic rerouted to Fireworks
+
+- **Ref:** `luis20072002/track1-agent:v2`
+- **Digest:** `sha256:5f6e75f33449ab4ab67c6779bd72c664bcaecfcc9ebaeedf99151a5167b9c93c`
+- **Pull:** `docker pull luis20072002/track1-agent:v2`
+- **Registro:** Docker Hub (público, pull anónimo verificado)
+- **Cambio vs v1 (routing-table, sin hardcodear modelos):** el run local de v1
+  falló practice-02 (math: 120 en vez de 144) y practice-07 (logic: inventó
+  "Fish") — las categorías de razonamiento donde un modelo local 3B es débil.
+  `config.json` ahora rutea `math` y `logic` a Fireworks en tier **mid**
+  (general/razonamiento, no el modelo de código), igual que ya iban
+  `code_debug`/`code_gen`; los paths emit-code (`code_exec_categories` y
+  `local_code_exec_categories`) quedaron en listas vacías **explícitas** (si
+  se borra la clave, los defaults del código reactivan emit-code para math).
+  El clasificador ganó cues de logic ("each ... own(s) ... one",
+  "which ... does each", "either ... or"): practice-07 caía en `factual` y el
+  reroute no lo alcanzaba; dev set 40/40. Las cuatro categorías locales
+  (factual, sentiment, summarization, ner), `use_mmap=False` y los budget
+  fixes quedan intactos. Verify (mock): ALL RULES PASS, 4 local / 4 fireworks,
+  peor task 14.4s, batch 67s, ~1.94 GiB.
+
+### v1 — fallback estable
 
 - **Ref:** `luis20072002/track1-agent:v1`
 - **Digest:** `sha256:9b06fca24f2ac891b5d8f95aab26533f524d9e2a9f65ba5151fb4459a70c3a92`
@@ -53,5 +76,5 @@ Re-verify the shipping image: `docker buildx build --platform linux/amd64
 - **Registro:** Docker Hub (público)
 - **Nota:** imagen construida y publicada con `--provenance=false --sbom=false`
   (manifest linux/amd64 de plataforma única). Verify pasa bajo `--memory=4g
-  --cpus=2`. Submission de infraestructura (Fireworks en mock); pendiente
-  tuning con credenciales reales para v2.
+  --cpus=2`. Submission de infraestructura (Fireworks en mock); v2 la
+  reemplaza como submission activa.

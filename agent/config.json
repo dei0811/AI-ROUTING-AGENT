@@ -9,21 +9,17 @@
   "local_threads": 2,
   "local_max_tokens_cap": 84,
   "escalate_malformed_local": true,
-  "code_exec_categories": [
-    "math"
-  ],
-  "local_code_exec_categories": [
-    "math"
-  ],
+  "code_exec_categories": [],
+  "local_code_exec_categories": [],
   "code_exec_timeout_s": 6,
   "category_routes": {
     "factual": "local",
-    "math": "local",
+    "math": "fireworks",
     "sentiment": "local",
     "summarization": "local",
     "ner": "local",
     "code_debug": "fireworks",
-    "logic": "local",
+    "logic": "fireworks",
     "code_gen": "fireworks",
     "unknown": "local"
   },
@@ -34,7 +30,7 @@
     "summarization": "small",
     "ner": "small",
     "code_debug": "large",
-    "logic": "large",
+    "logic": "mid",
     "code_gen": "large",
     "unknown": "mid"
   },

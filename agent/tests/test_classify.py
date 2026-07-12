@@ -29,6 +29,15 @@ class TestClassify(unittest.TestCase):
         prompt = "This throws a TypeError, please fix:\n```python\nlen(3)\n```"
         self.assertEqual(c.classify(prompt), c.CODE_DEBUG)
 
+    def test_assignment_puzzle_without_if_then_is_logic_not_factual(self):
+        # practice-07 shape: no if/then, ends in "?" (a factual cue).
+        prompt = (
+            "Sam, Jo and Lee each own exactly one pet: a dog, a cat or a "
+            "fish. Sam is allergic to fur, so Sam does not own the dog or "
+            "the cat. Jo does not own the cat. Which pet does each person own?"
+        )
+        self.assertEqual(c.classify(prompt), c.LOGIC)
+
     def test_write_a_function_to_sum_is_code_gen_not_math(self):
         prompt = "Write a function to sum a list of integers in Python."
         self.assertEqual(c.classify(prompt), c.CODE_GEN)

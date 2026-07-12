@@ -4,6 +4,7 @@ Uses the offline mocks, so these tests assert where answers come from
 (call logs) — the property the token ranking actually depends on.
 """
 
+import json
 import sys
 import unittest
 from pathlib import Path
@@ -17,11 +18,15 @@ from solve import (
     solve_all, solve_task,
 )
 
+SHIPPED_CONFIG_PATH = Path(__file__).resolve().parents[1] / "config.json"
+
 ALLOWED = ["mock-8b", "mock-70b"]
 BASE_CONFIG = {
     "allowed_models": ALLOWED,
     "escalate_malformed_local": True,
-    "local_code_exec_categories": ["math"],
+    "category_routes": {"math": "fireworks", "logic": "fireworks"},
+    "code_exec_categories": [],
+    "local_code_exec_categories": [],
 }
 
 
@@ -59,13 +64,45 @@ class TestSolveTask(unittest.TestCase):
         self.assertEqual(result["source"], "local")
         self.assertEqual(client.tokens.summary()["calls"], 0)
 
-    def test_math_local_emits_code_and_executes(self):
-        client, local, tiers = make_parts(
-            local_responses=["```python\nprint(204 - 60)\n```"],
-        )
+    def test_math_goes_to_fireworks_direct(self):
+        # v2 reroute: math answers come from Fireworks directly, no
+        # emit-code detour and no local decode.
+        client, local, tiers = make_parts(fw_responses=["144"])
         result = solve_task(
             {"task_id": "t1", "prompt": "Calculate 240 - 36 - 60"},
             client, local, tiers, BASE_CONFIG,
+        )
+        self.assertEqual(result["answer"], "144")
+        self.assertEqual(result["source"], "fireworks")
+        self.assertEqual(len(local.call_log), 0)
+        self.assertEqual(client.tokens.summary()["calls"], 1)
+
+    def test_logic_goes_to_fireworks_direct(self):
+        client, local, tiers = make_parts(fw_responses=["Dog"])
+        result = solve_task(
+            {"task_id": "t1", "prompt":
+                "If Ana is taller than Bo and Bo is taller than Cy, "
+                "deduce who is tallest."},
+            client, local, tiers, BASE_CONFIG,
+        )
+        self.assertEqual(result["source"], "fireworks")
+        self.assertEqual(len(local.call_log), 0)
+        self.assertEqual(client.tokens.summary()["calls"], 1)
+
+    def test_math_local_emit_code_mechanism_still_works(self):
+        # The local emit-code path is unused by the shipped config but
+        # remains available via config override; keep it covered.
+        client, local, tiers = make_parts(
+            local_responses=["```python\nprint(204 - 60)\n```"],
+        )
+        config = dict(
+            BASE_CONFIG,
+            category_routes={"math": "local"},
+            local_code_exec_categories=["math"],
+        )
+        result = solve_task(
+            {"task_id": "t1", "prompt": "Calculate 240 - 36 - 60"},
+            client, local, tiers, config,
         )
         self.assertEqual(result["answer"], "144")
         self.assertEqual(result["source"], "local")
@@ -144,6 +181,40 @@ class TestSolveAll(unittest.TestCase):
         results = solve_all(self.TASKS, client, dict(BASE_CONFIG), local_model=local)
         self.assertEqual([r["source"] for r in results], [LOCAL, LOCAL])
         self.assertEqual(client.tokens.summary()["total_tokens"], 0)
+
+
+class TestShippedConfigRouting(unittest.TestCase):
+    """Pin the routing table that ships in config.json (v2 reroute)."""
+
+    @classmethod
+    def setUpClass(cls):
+        with open(SHIPPED_CONFIG_PATH, encoding="utf-8") as f:
+            cls.config = json.load(f)
+
+    def test_math_and_logic_route_fireworks(self):
+        local = MockLocalModel()
+        for category in ("math", "logic", "code_debug", "code_gen"):
+            self.assertEqual(
+                resolve_route(category, self.config, local), FIREWORKS, category,
+            )
+
+    def test_four_local_categories_stay_local(self):
+        local = MockLocalModel()
+        for category in ("factual", "sentiment", "summarization", "ner"):
+            self.assertEqual(
+                resolve_route(category, self.config, local), LOCAL, category,
+            )
+
+    def test_code_exec_paths_disabled(self):
+        # Explicit empty lists: absent keys would fall back to the code
+        # defaults, which re-enable the emit-code path for math.
+        self.assertEqual(self.config["code_exec_categories"], [])
+        self.assertEqual(self.config["local_code_exec_categories"], [])
+
+    def test_math_and_logic_use_a_general_tier_not_the_code_tier(self):
+        tiers = self.config["category_tiers"]
+        self.assertEqual(tiers["math"], "mid")
+        self.assertEqual(tiers["logic"], "mid")
 
 
 class TestCleanAnswer(unittest.TestCase):

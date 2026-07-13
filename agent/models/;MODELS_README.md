@@ -18,8 +18,8 @@ Selected after two rounds of measurement (see `eval/BENCHMARK_REPORT.md` and
   batch 140 s for the 8 practice tasks, no OOM, no empty answers, image
   **1.94 GiB** gzip-compressed.
 
-Shipped config: `local_ctx=1536`, `local_kv_type=q8_0`, `local_max_tokens_cap=84`
-(summarization capped to 64 to hold per-task margin).
+Base config: `local_ctx=1536`, `local_kv_type=q8_0`. Token caps have been tuned per
+category across versions — see the published-images log below for the current values.
 
 **Why not the bench winner Phi-4-mini (0.97)?** Its 2.5 GB weights left no cache
 slack under the 4 GB cgroup: mmap'd weights are reclaimable clean pages, the
@@ -47,7 +47,37 @@ Re-verify the shipping image: `docker buildx build --platform linux/amd64
 
 ## Published images
 
-### v2 — current (2026-07-12): math & logic rerouted to Fireworks
+### v3 — current (2026-07-12): format/pipeline fixes after ACCURACY_GATE_FAILED
+
+- **Ref:** `luis20072002/track1-agent:v3`
+- **Digest:** `sha256:b5cf786c63d711bb205f7f0952684f0c7d4eb57af87e959a5cfefbda563654d2`
+- **Pull:** `docker pull luis20072002/track1-agent:v3`
+- **Registro:** Docker Hub (público, pull anónimo verificado)
+- **Config de tokens:** `local_max_tokens_cap=120` (factual), `sentiment=48`; NER en formato
+  compacto con cap 84.
+- **Contexto:** v2 devolvió `ACCURACY_GATE_FAILED`. Una validación local contra el set público
+  del FAQ mostró que las fallas eran de **formato/pipeline, no del modelo local** (el modelo pasó
+  toda tarea donde el pipeline lo dejó hablar). Commit `207f83c`. Cuatro correcciones:
+  1. **Sentiment** — el prompt pide etiqueta + una frase de razón que reconoce ambos lados; el
+     cleaner ya no colapsa a una sola palabra ni marca como malformada una razón con ambas
+     polaridades (esto además eliminaba una escalada espuria a Fireworks). Cap `8 → 48`.
+  2. **NER** — formato compacto `type → [strings]` (~45 tokens vs ~120 por objetos por entidad);
+     `_extract_json` recupera arrays parciales, así una salida truncada conserva sus entidades
+     completas. Cap sin cambios (84).
+  3. **Clasificador** — las palabras débiles de math (`difference/solve/sum/average/...`) ahora
+     exigen un dígito en el prompt; las preguntas conceptuales de comparación se rutean a
+     `factual` en vez de recibir el prompt de math "solo el número". (Dos de tres ejemplos
+     factuales del FAQ caían en esta trampa.)
+  4. **Factual** — el prompt permite una explicación acotada; `local_max_tokens_cap 84 → 120`
+     para que las respuestas de dos conceptos no se trunquen a media frase.
+- **Validación tras los fixes** (pipeline real, pesos reales, Fireworks mock): 8/8 en tareas
+  verificables localmente (era 3/6 más dos misrouteos); dev set 40/40; 38 unit tests en verde.
+- **Nota de tiempo:** los caps más altos añaden ~5 s de decode en el peor caso; re-correr
+  `eval/verify_image.py` en el contenedor capado reconfirma el límite de 30 s/tarea. Las cuatro
+  categorías locales, `use_mmap=False` y los budget fixes quedan intactos; math/logic siguen en
+  Fireworks (su corrección solo se prueba con envío real).
+
+### v2 — anterior (2026-07-12): math & logic rerouted to Fireworks
 
 - **Ref:** `luis20072002/track1-agent:v2`
 - **Digest:** `sha256:5f6e75f33449ab4ab67c6779bd72c664bcaecfcc9ebaeedf99151a5167b9c93c`
@@ -56,17 +86,15 @@ Re-verify the shipping image: `docker buildx build --platform linux/amd64
 - **Cambio vs v1 (routing-table, sin hardcodear modelos):** el run local de v1
   falló practice-02 (math: 120 en vez de 144) y practice-07 (logic: inventó
   "Fish") — las categorías de razonamiento donde un modelo local 3B es débil.
-  `config.json` ahora rutea `math` y `logic` a Fireworks en tier **mid**
+  `config.json` rutea `math` y `logic` a Fireworks en tier **mid**
   (general/razonamiento, no el modelo de código), igual que ya iban
   `code_debug`/`code_gen`; los paths emit-code (`code_exec_categories` y
   `local_code_exec_categories`) quedaron en listas vacías **explícitas** (si
   se borra la clave, los defaults del código reactivan emit-code para math).
   El clasificador ganó cues de logic ("each ... own(s) ... one",
   "which ... does each", "either ... or"): practice-07 caía en `factual` y el
-  reroute no lo alcanzaba; dev set 40/40. Las cuatro categorías locales
-  (factual, sentiment, summarization, ner), `use_mmap=False` y los budget
-  fixes quedan intactos. Verify (mock): ALL RULES PASS, 4 local / 4 fireworks,
-  peor task 14.4s, batch 67s, ~1.94 GiB.
+  reroute no lo alcanzaba; dev set 40/40. Verify (mock): ALL RULES PASS,
+  4 local / 4 fireworks, peor task 14.4s, batch 67s, ~1.94 GiB. Reemplazada por v3.
 
 ### v1 — fallback estable
 
@@ -76,5 +104,5 @@ Re-verify the shipping image: `docker buildx build --platform linux/amd64
 - **Registro:** Docker Hub (público)
 - **Nota:** imagen construida y publicada con `--provenance=false --sbom=false`
   (manifest linux/amd64 de plataforma única). Verify pasa bajo `--memory=4g
-  --cpus=2`. Submission de infraestructura (Fireworks en mock); v2 la
-  reemplaza como submission activa.
+  --cpus=2`. Submission de infraestructura (Fireworks en mock); v3 es la
+  submission activa.
